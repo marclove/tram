@@ -1,0 +1,16 @@
+$schema: 'https://moonrepo.dev/schemas/workspace.json'
+
+projects:
+  globs:
+    - 'crates/*'
+  sources:
+    tram: '.'
+
+vcs:
+  defaultBranch: 'main'
+  provider: 'github'
+
+runner:
+  logRunningCommand: true
+
+versionConstraint: '>=1.0.0'

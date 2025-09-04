@@ -1,0 +1,76 @@
+# Tram Roadmap
+
+Development roadmap for improving Tram as a CLI starter kit foundation.
+
+## Phase 1: Core Foundation
+- [ ] Basic Cargo.toml with clap + starbase dependencies
+- [ ] Minimal working CLI with subcommands (`init`, `build`, `clean`)
+- [ ] AppSession implementation template
+- [ ] Basic error handling with miette + thiserror
+- [ ] Configuration loading (TOML/YAML/JSON)
+- [ ] Workspace detection utilities
+- [ ] Basic logging and tracing setup
+
+## Phase 2: Developer Experience
+- [ ] Interactive project initialization (`tram new <name>`)
+- [ ] Template generation for common CLI patterns
+- [ ] Hot reload development mode
+- [ ] Built-in testing utilities and fixtures
+- [ ] Comprehensive example commands
+- [ ] Shell completion generation
+- [ ] Man page generation
+- [ ] Release automation (GitHub Actions)
+
+## Phase 3: Advanced Features
+- [ ] Plugin architecture foundation
+- [ ] Multiple output formats (JSON, YAML, table)
+- [ ] Progress indicators and spinners
+- [ ] Interactive prompts and confirmations
+- [ ] File watching and live updates
+- [ ] Concurrent task execution
+- [ ] Configuration validation schemas
+- [ ] Environment-specific configs (dev/staging/prod)
+
+## Phase 4: Ecosystem Integration
+- [ ] Docker containerization templates
+- [ ] CI/CD pipeline templates
+- [ ] Package manager integration (Homebrew, Scoop, etc.)
+- [ ] Update notification system
+- [ ] Crash reporting and telemetry (opt-in)
+- [ ] Performance profiling utilities
+- [ ] Memory usage optimization
+- [ ] Cross-compilation support
+
+## Phase 5: Advanced Patterns
+- [ ] Daemon/service mode support
+- [ ] IPC communication patterns
+- [ ] Database integration templates
+- [ ] HTTP client utilities
+- [ ] Authentication flow patterns
+- [ ] Caching strategies
+- [ ] Background job processing
+- [ ] Distributed CLI coordination
+
+## Phase 6: Developer Tooling
+- [ ] Code generation macros
+- [ ] Custom derive macros for CLI patterns
+- [ ] Development server with API introspection
+- [ ] CLI testing framework
+- [ ] Benchmarking utilities
+- [ ] Documentation generation
+- [ ] Migration utilities between versions
+- [ ] Debug mode with enhanced diagnostics
+
+## Non-Goals
+- Framework-specific integrations (web frameworks, databases)
+- GUI applications
+- Language bindings for non-Rust languages
+- Complex domain-specific logic
+- Third-party service integrations (unless generic patterns)
+
+## Success Metrics
+- Time from fork to first working CLI: < 5 minutes
+- Lines of boilerplate code eliminated: > 200 per project
+- Common CLI patterns covered: > 80%
+- Community adoption and contributions
+- Zero-config developer experience for standard use cases

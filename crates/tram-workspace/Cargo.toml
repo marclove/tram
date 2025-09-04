@@ -1,0 +1,15 @@
+[package]
+name = "tram-workspace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Workspace detection utilities for CLI applications"
+
+[dependencies]
+# Core dependencies
+tram-core = { path = "../tram-core" }
+
+[dev-dependencies]
+tempfile.workspace = true

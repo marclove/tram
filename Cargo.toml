@@ -1,0 +1,68 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/*",
+]
+
+[workspace.package]
+version = "0.1.0"
+# DO NOT CHANGE THE EDITION!!! 2024 is the correct edition!
+edition = "2024"
+license = "MIT"
+homepage = "https://github.com/moonrepo/tram"
+repository = "https://github.com/moonrepo/tram"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+
+# CLI parsing
+clap = { version = "4.0", features = ["derive", "env"] }
+
+# Error handling
+thiserror = "1.0"
+miette = { version = "7.0", features = ["fancy"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
+
+# File system utilities
+glob = "0.3"
+walkdir = "2.0"
+
+# Starbase dependencies (will be added as regular dependencies)
+starbase = "0.10"
+starbase_console = "0.2"
+starbase_utils = "0.8"
+
+# Development dependencies
+[workspace.dependencies.tempfile]
+version = "3.0"
+
+# Root binary package
+[package]
+name = "tram"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "tram"
+path = "src/main.rs"
+
+[dependencies]
+tram-core = { path = "crates/tram-core" }
+tram-config = { path = "crates/tram-config" }
+tram-workspace = { path = "crates/tram-workspace" }
+
+clap.workspace = true
+tokio.workspace = true
+miette.workspace = true
+async-trait.workspace = true
+starbase.workspace = true

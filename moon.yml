@@ -1,0 +1,46 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+language: 'rust'
+
+tasks:
+  format:
+    command: 'cargo fmt --all'
+    inputs:
+      - 'src/**/*.rs'
+      - 'crates/**/src/**/*.rs'
+      
+  format-check:
+    command: 'cargo fmt --all -- --check'
+    inputs:
+      - 'src/**/*.rs'
+      - 'crates/**/src/**/*.rs'
+      
+  lint:
+    command: 'cargo clippy --workspace --all-targets --all-features -- -D warnings'
+    inputs:
+      - 'src/**/*.rs'
+      - 'crates/**/src/**/*.rs' 
+      - '**/Cargo.toml'
+      
+  build:
+    command: 'cargo build --workspace --all-targets --all-features'
+    deps:
+      - 'tram-core:build'
+      - 'tram-config:build'
+      - 'tram-workspace:build'
+    inputs:
+      - 'src/**/*.rs'
+      - 'crates/**/src/**/*.rs'
+      - '**/Cargo.toml'
+      
+  test:
+    command: 'cargo test --workspace --all-features'
+    deps:
+      - 'tram-core:test'
+      - 'tram-config:test' 
+      - 'tram-workspace:test'
+    inputs:
+      - 'src/**/*.rs'
+      - 'crates/**/src/**/*.rs'
+      - 'crates/**/tests/**/*.rs'
+      - '**/Cargo.toml'

@@ -1,0 +1,24 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+language: 'rust'
+
+dependsOn:
+  - 'tram-core'
+
+tasks:
+  build:
+    command: 'cargo build --package tram-workspace'
+    deps:
+      - 'tram-core:build'
+    inputs:
+      - 'src/**/*'
+      - 'Cargo.toml'
+      
+  test:
+    command: 'cargo test --package tram-workspace'
+    deps:
+      - 'tram-core:build'
+    inputs:
+      - 'src/**/*'
+      - 'tests/**/*'
+      - 'Cargo.toml'
