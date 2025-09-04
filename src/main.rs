@@ -7,9 +7,13 @@ use async_trait::async_trait;
 use clap::Parser;
 use miette::Result;
 use starbase::{App, AppSession};
+use std::collections::HashMap;
 use tracing::{debug, info};
 use tram_config::Config;
-use tram_core::{InitConfig, InitProjectType, ProjectInitializer, init_tracing};
+use tram_core::{
+    InitConfig, InitProjectType, ProjectInitializer, TemplateConfig, TemplateGenerator,
+    TemplateType, init_tracing,
+};
 use tram_workspace::{ProjectType, WorkspaceDetector};
 
 /// CLI structure demonstrating clap + starbase patterns.
@@ -62,6 +66,23 @@ pub enum Commands {
         /// Skip interactive prompts
         #[arg(long)]
         skip_prompts: bool,
+    },
+    /// Generate templates for common CLI patterns
+    Generate {
+        /// Template type (command, config-section, error-type, session-extension)
+        #[arg(long, default_value = "command")]
+        template_type: String,
+        /// Name of the item to generate (e.g., "backup", "deploy")
+        name: String,
+        /// Description for the generated template
+        #[arg(long)]
+        description: Option<String>,
+        /// Target directory (defaults to current directory)
+        #[arg(long)]
+        target_dir: Option<std::path::PathBuf>,
+        /// Write the template to filesystem (default: show to stdout)
+        #[arg(long)]
+        write: bool,
     },
     /// Initialize a new project (legacy command)
     Init {
@@ -185,6 +206,27 @@ fn project_type_display(project_type: &InitProjectType) -> &'static str {
     }
 }
 
+/// Parse template type string to TemplateType.
+fn parse_template_type(type_str: &str) -> TemplateType {
+    match type_str.to_lowercase().as_str() {
+        "command" | "cmd" => TemplateType::Command,
+        "config-section" | "config" => TemplateType::ConfigSection,
+        "error-type" | "error" => TemplateType::ErrorType,
+        "session-extension" | "session" => TemplateType::SessionExtension,
+        _ => TemplateType::Command, // Default
+    }
+}
+
+/// Display name for template type.
+fn template_type_display(template_type: &TemplateType) -> &'static str {
+    match template_type {
+        TemplateType::Command => "Command",
+        TemplateType::ConfigSection => "Config Section",
+        TemplateType::ErrorType => "Error Type",
+        TemplateType::SessionExtension => "Session Extension",
+    }
+}
+
 /// Execute a CLI command with the session.
 async fn execute_command(command: Commands, session: &TramSession) -> tram_core::AppResult<()> {
     match command {
@@ -225,6 +267,57 @@ async fn execute_command(command: Commands, session: &TramSession) -> tram_core:
             );
             if let Some(desc) = &init_config.description {
                 println!("  Description: {}", desc);
+            }
+        }
+
+        Commands::Generate {
+            template_type,
+            name,
+            description,
+            target_dir,
+            write,
+        } => {
+            info!("Generating {} template: {}", template_type, name);
+
+            let template_type = parse_template_type(&template_type);
+            let target_dir = target_dir.unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            });
+
+            let mut parameters = HashMap::new();
+            if let Some(desc) = description {
+                parameters.insert("description".to_string(), desc);
+            }
+
+            let template_config = TemplateConfig {
+                name: name.clone(),
+                template_type: template_type.clone(),
+                target_dir,
+                parameters,
+            };
+
+            let generator = TemplateGenerator::new();
+            let template = generator.generate_template(&template_config)?;
+
+            if write {
+                generator.write_template(&template)?;
+                println!(
+                    "✓ Generated {} template: {} -> {}",
+                    template_type_display(&template_type),
+                    name,
+                    template.file_path.display()
+                );
+            } else {
+                println!(
+                    "Generated {} template for '{}':",
+                    template_type_display(&template_type),
+                    name
+                );
+                println!("File path: {}", template.file_path.display());
+                println!("\n{}", "=".repeat(80));
+                println!("{}", template.content);
+                println!("{}", "=".repeat(80));
+                println!("\nTo write to filesystem, add the --write flag");
             }
         }
 
