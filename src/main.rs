@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use clap::Parser;
 use miette::Result;
 use starbase::{App, AppSession};
+use tracing::{debug, info};
 use tram_config::Config;
+use tram_core::{InitConfig, InitProjectType, ProjectInitializer, init_tracing};
 use tram_workspace::{ProjectType, WorkspaceDetector};
 
 /// CLI structure demonstrating clap + starbase patterns.
@@ -47,7 +49,21 @@ pub struct GlobalOptions {
 /// Available CLI commands.
 #[derive(Parser, Debug)]
 pub enum Commands {
-    /// Initialize a new project
+    /// Create a new project interactively
+    New {
+        /// Project name
+        name: String,
+        /// Project type (rust, nodejs, python, go, java, generic)
+        #[arg(long, default_value = "rust")]
+        project_type: String,
+        /// Project description
+        #[arg(long)]
+        description: Option<String>,
+        /// Skip interactive prompts
+        #[arg(long)]
+        skip_prompts: bool,
+    },
+    /// Initialize a new project (legacy command)
     Init {
         /// Project name
         name: String,
@@ -83,24 +99,37 @@ impl TramSession {
             project_type: None,
         })
     }
+
+    pub fn with_config(config: Config) -> tram_core::AppResult<Self> {
+        Ok(Self {
+            config,
+            workspace: WorkspaceDetector::new()?,
+            workspace_root: None,
+            project_type: None,
+        })
+    }
 }
 
 #[async_trait]
 impl AppSession for TramSession {
     async fn startup(&mut self) -> tram_core::AppResult<Option<u8>> {
-        // Load configuration - in a real app, you'd pass CLI args here
-        self.config = Config::load_from_args(&GlobalOptions {
-            log_level: "info".to_string(),
-            format: "table".to_string(),
-            no_color: false,
-            config: None,
-        })?;
+        // Initialize tracing before anything else
+        let use_json = self.config.output_format == "json";
+        init_tracing(&self.config.log_level, use_json)?;
+
+        info!("Starting Tram CLI application");
+        debug!("Configuration: {:?}", self.config);
+
+        // Validate configuration
         self.config.validate()?;
 
         // Detect workspace
         if let Ok(root) = self.workspace.detect_root() {
             self.workspace_root = Some(root.clone());
             self.project_type = ProjectType::detect(&root);
+            info!("Detected workspace at: {}", root.display());
+        } else {
+            debug!("No workspace detected");
         }
 
         Ok(None)
@@ -110,11 +139,14 @@ impl AppSession for TramSession {
         // This phase would typically validate the environment,
         // check dependencies, build task graphs, etc.
 
+        debug!("Analyzing workspace environment");
+
         if let Some(root) = &self.workspace_root {
             println!("Working in {} workspace", root.display());
 
             if let Some(project_type) = &self.project_type {
                 println!("Detected {:?} project", project_type);
+                info!("Project type: {:?}", project_type);
             }
         }
 
@@ -123,14 +155,79 @@ impl AppSession for TramSession {
 
     async fn shutdown(&mut self) -> tram_core::AppResult<Option<u8>> {
         // Cleanup - save caches, write state, etc.
+        debug!("Shutting down application");
         println!("Done!");
         Ok(None)
+    }
+}
+
+/// Parse project type string to InitProjectType.
+fn parse_project_type(type_str: &str) -> InitProjectType {
+    match type_str.to_lowercase().as_str() {
+        "rust" => InitProjectType::Rust,
+        "nodejs" | "node" | "js" => InitProjectType::NodeJs,
+        "python" | "py" => InitProjectType::Python,
+        "go" => InitProjectType::Go,
+        "java" => InitProjectType::Java,
+        _ => InitProjectType::Generic,
+    }
+}
+
+/// Display name for project type.
+fn project_type_display(project_type: &InitProjectType) -> &'static str {
+    match project_type {
+        InitProjectType::Rust => "Rust",
+        InitProjectType::NodeJs => "Node.js",
+        InitProjectType::Python => "Python",
+        InitProjectType::Go => "Go",
+        InitProjectType::Java => "Java",
+        InitProjectType::Generic => "Generic",
     }
 }
 
 /// Execute a CLI command with the session.
 async fn execute_command(command: Commands, session: &TramSession) -> tram_core::AppResult<()> {
     match command {
+        Commands::New {
+            name,
+            project_type,
+            description,
+            skip_prompts,
+        } => {
+            info!("Creating new project: {}", name);
+
+            if !skip_prompts {
+                // In future iterations, we would add interactive prompts here
+                // For now, just note that interactive mode is planned
+                debug!("Interactive prompts would be shown here (future feature)");
+            }
+
+            let project_type = parse_project_type(&project_type);
+            let current_dir =
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let project_path = current_dir.join(&name);
+
+            let init_config = InitConfig {
+                name: name.clone(),
+                path: project_path,
+                project_type,
+                description,
+                author: None,
+            };
+
+            let initializer = ProjectInitializer::new();
+            initializer.create_project(&init_config)?;
+
+            println!(
+                "✓ Created new {} project: {}",
+                project_type_display(&init_config.project_type),
+                name
+            );
+            if let Some(desc) = &init_config.description {
+                println!("  Description: {}", desc);
+            }
+        }
+
         Commands::Init { name, verbose } => {
             println!("🚀 Initializing project: {}", name);
 
@@ -142,7 +239,24 @@ async fn execute_command(command: Commands, session: &TramSession) -> tram_core:
                 println!("Config: {:?}", session.config);
             }
 
-            // In a real implementation, you'd create project files here
+            // Legacy command - for now, just create a generic project
+            let current_dir =
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let project_path = current_dir.join(&name);
+
+            let init_config = InitConfig {
+                name: name.clone(),
+                path: project_path,
+                project_type: InitProjectType::Generic,
+                description: Some("A new project".to_string()),
+                author: None,
+            };
+
+            let initializer = ProjectInitializer::new();
+            if let Err(e) = initializer.create_project(&init_config) {
+                println!("Warning: Could not create project files: {}", e);
+            }
+
             println!("Project '{}' initialized!", name);
         }
 
@@ -182,8 +296,17 @@ async fn main() -> Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse();
 
-    // Create application session
-    let mut session = TramSession::new()?;
+    // Create initial configuration from CLI args
+    let global_options = tram_config::GlobalOptions {
+        log_level: cli.global.log_level.clone(),
+        format: cli.global.format.clone(),
+        no_color: cli.global.no_color,
+        config: cli.global.config.clone(),
+    };
+    let config = Config::load_from_args(&global_options)?;
+
+    // Create application session with config
+    let mut session = TramSession::with_config(config)?;
 
     // Create starbase app and run it with our session
     let app = App::default();

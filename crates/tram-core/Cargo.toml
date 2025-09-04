@@ -22,5 +22,12 @@ miette.workspace = true
 # Starbase integration
 starbase.workspace = true
 
+# Logging and tracing
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
 # Configuration support
 serde.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

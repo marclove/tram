@@ -3,12 +3,20 @@
 //! Provides utilities for loading configuration from multiple sources
 //! (CLI args, environment variables, config files) with proper precedence.
 
-use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tram_core::{AppResult, TramError};
+
+/// Structure representing CLI global options for configuration loading.
+#[derive(Debug, Clone)]
+pub struct GlobalOptions {
+    pub log_level: String,
+    pub format: String,
+    pub no_color: bool,
+    pub config: Option<PathBuf>,
+}
 
 /// Example configuration structure showing common CLI app configuration patterns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,15 +51,16 @@ impl Default for Config {
 
 impl Config {
     /// Load configuration with precedence: CLI args > env vars > config file > defaults
-    pub fn load_from_args<T: Parser>(_cli_args: &T) -> AppResult<Self> {
+    pub fn load_from_args(cli_args: &GlobalOptions) -> AppResult<Self> {
         let mut config = Self::default();
 
         // 1. Start with defaults (already set)
 
         // 2. Load from config file if specified
-        // This would normally use clap fields to get the config path
-        // For now, check standard locations
-        if let Some(file_config) = Self::load_from_file()? {
+        if let Some(config_path) = &cli_args.config {
+            let file_config = Self::load_config_file(&config_path.to_string_lossy())?;
+            config = Self::merge(config, file_config);
+        } else if let Some(file_config) = Self::load_from_file()? {
             config = Self::merge(config, file_config);
         }
 
@@ -59,8 +68,12 @@ impl Config {
         config = Self::load_from_env(config);
 
         // 4. Override with CLI args
-        // This would normally use clap fields to get the actual CLI values
-        // For demonstration purposes, we'll skip this step
+        config.log_level = cli_args.log_level.clone();
+        config.output_format = cli_args.format.clone();
+        config.color = !cli_args.no_color;
+        if let Some(config_file) = &cli_args.config {
+            config.config_file = Some(config_file.clone());
+        }
 
         Ok(config)
     }

@@ -9,12 +9,15 @@ Tram combines the power of [clap](https://github.com/clap-rs/clap) for command-l
 - **Powerful CLI parsing** with clap's derive macros
 - **Session-based architecture** for complex application lifecycles
 - **Rich error handling** with beautiful diagnostics via miette
+- **Structured logging** with console and JSON output formats
+- **Project initialization** with support for Rust, Node.js, Python, Go, and generic projects
 - **Multi-crate workspace** structure for organizing complex applications
 - **Moon task runner** integration for efficient development workflows
 - **Proto toolchain management** for consistent development environments
-- **Built-in configuration management** with multiple source support
+- **Built-in configuration management** with multiple source support (CLI, env, files)
 - **Workspace detection** utilities for project-aware tools
 - **Claude Code hooks** for automated quality checks
+- **Behavior-driven development** patterns with comprehensive test coverage
 - **Terminal UI components** for interactive experiences
 
 ## Quick Start
@@ -33,14 +36,27 @@ just setup
 just run -- --help
 ```
 
+5. **Try creating a new project**:
+
+```bash
+# Create a new Rust project
+just run -- new my-rust-app --project-type rust --description "My awesome CLI tool"
+
+# Create a Node.js project  
+just run -- new my-node-app --project-type nodejs --description "My Node.js CLI"
+
+# See all available project types and options
+just run -- new --help
+```
+
 ## Project Structure
 
 ```
 ├── src/
 │   └── main.rs                 # Application entry point with clap + starbase integration
 ├── crates/
-│   ├── tram-core/              # Core types and error handling
-│   ├── tram-config/            # Configuration management utilities
+│   ├── tram-core/              # Core types, error handling, logging, and project initialization
+│   ├── tram-config/            # Multi-source configuration management (CLI, env, files)
 │   └── tram-workspace/         # Workspace detection and project type identification
 ├── .claude/
 │   ├── settings.json           # Claude Code hooks configuration
@@ -63,7 +79,13 @@ just check
 just test
 
 # Run your CLI with arguments
+just run -- new my-project --project-type rust --description "My CLI tool"
+
+# Legacy init command
 just run -- init my-project --verbose
+
+# Show workspace information
+just run -- workspace --detailed
 
 # Build the project
 just build
@@ -73,6 +95,54 @@ just watch
 
 # Show all available commands
 just --list
+```
+
+## Available CLI Commands
+
+Tram includes several example commands to demonstrate common CLI patterns:
+
+### `new` - Create New Projects
+```bash
+# Create a Rust project (default)
+tram new my-rust-app
+
+# Create projects for different languages
+tram new my-node-app --project-type nodejs
+tram new my-python-app --project-type python  
+tram new my-go-app --project-type go
+
+# Add description and skip interactive prompts
+tram new my-app --description "My awesome CLI" --skip-prompts
+
+# Supported project types: rust, nodejs, python, go, java, generic
+```
+
+### `workspace` - Workspace Information
+```bash
+# Show current workspace information
+tram workspace
+
+# Show detailed project information and ignore patterns
+tram workspace --detailed
+```
+
+### `config` - Configuration Display
+```bash
+# Show current configuration
+tram config
+```
+
+### Global Options
+```bash
+# Control logging output
+tram --log-level debug workspace
+tram --log-level info --format json config
+
+# Use custom configuration file
+tram --config ./my-config.toml workspace
+
+# Disable colored output
+tram --no-color workspace
 ```
 
 ## Building Your CLI
@@ -216,6 +286,67 @@ let root = detector.detect_root()?;
 let project_type = ProjectType::detect(&root);
 ```
 
+### Core Utilities
+
+Tram provides essential utilities for building robust CLI applications:
+
+#### Error Handling
+```rust
+use tram_core::{TramError, AppResult};
+
+fn my_command() -> AppResult<()> {
+    // Rich error messages with diagnostic codes
+    Err(TramError::ConfigNotFound { 
+        path: "config.toml".to_string() 
+    }.into())
+}
+```
+
+#### Structured Logging
+```rust
+use tram_core::init_tracing;
+use tracing::{info, debug, warn, error};
+
+// Initialize with configurable output format
+init_tracing("debug", false)?;  // Console output
+init_tracing("info", true)?;    // JSON output for structured logging
+
+info!("Application started");
+debug!("Debug information: {:?}", data);
+```
+
+#### Project Creation
+```rust
+use tram_core::{ProjectInitializer, InitConfig, InitProjectType};
+
+let config = InitConfig {
+    name: "my-project".to_string(),
+    path: PathBuf::from("./my-project"),
+    project_type: InitProjectType::Rust,
+    description: Some("A new CLI tool".to_string()),
+    author: None,
+};
+
+let initializer = ProjectInitializer::new();
+initializer.create_project(&config)?;
+```
+
+#### Multi-Source Configuration
+```rust
+use tram_config::{Config, GlobalOptions};
+
+// Load from CLI args > env vars > config files > defaults
+let config = Config::load_from_args(&global_options)?;
+config.validate()?;
+
+// Use throughout your application
+match config.output_format.as_str() {
+    "json" => println!("{}", serde_json::to_string(&data)?),
+    "yaml" => println!("{}", serde_yaml::to_string(&data)?),
+    _ => println!("{:#?}", data),
+}
+```
+
 ### Quality Assurance
 
 Claude Code hooks automatically check for issues:
@@ -223,6 +354,7 @@ Claude Code hooks automatically check for issues:
 - **Rust compiler warnings** - Detected immediately after file edits
 - **Code formatting** - Integrated with moon's format tasks
 - **Linting** - Clippy runs with `-D warnings` to catch all issues
+- **Behavior-driven testing** - Focus on user expectations, not implementation details
 
 ## Development Environment
 

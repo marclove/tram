@@ -3,23 +3,23 @@
 Development roadmap for improving Tram as a CLI starter kit foundation.
 
 ## Phase 1: Core Foundation
-- [ ] Basic Cargo.toml with clap + starbase dependencies
-- [ ] Minimal working CLI with subcommands (`init`, `build`, `clean`)
-- [ ] AppSession implementation template
-- [ ] Basic error handling with miette + thiserror
-- [ ] Configuration loading (TOML/YAML/JSON)
-- [ ] Workspace detection utilities
-- [ ] Basic logging and tracing setup
+1. [x] Basic Cargo.toml with clap + starbase dependencies
+2. [x] Minimal working CLI with subcommands (`init`, `workspace`, `config`)
+3. [x] AppSession implementation template
+4. [x] Basic error handling with miette + thiserror
+5. [x] Configuration loading (TOML/YAML/JSON)
+6. [x] Workspace detection utilities
+7. [x] Basic logging and tracing setup
 
 ## Phase 2: Developer Experience
-- [ ] Interactive project initialization (`tram new <name>`)
-- [ ] Template generation for common CLI patterns
-- [ ] Hot reload development mode
-- [ ] Built-in testing utilities and fixtures
-- [ ] Comprehensive example commands
-- [ ] Shell completion generation
-- [ ] Man page generation
-- [ ] Release automation (GitHub Actions)
+1. [x] Interactive project initialization (`tram new <name>`)
+2. [ ] Template generation for common CLI patterns
+3. [ ] Hot reload development mode
+4. [ ] Built-in testing utilities and fixtures
+5. [ ] Comprehensive example commands
+6. [ ] Shell completion generation
+7. [ ] Man page generation
+8. [ ] Release automation (GitHub Actions)
 
 ## Phase 3: Advanced Features
 - [ ] Plugin architecture foundation
