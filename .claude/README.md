@@ -2,6 +2,38 @@
 
 This directory contains Claude Code hooks for the Tram project.
 
+## PreToolUse Hook: Bash Cargo Prevention
+
+The `bash-cargo-check.py` hook runs before Bash commands execute to prevent direct cargo usage and guide Claude to use proper task orchestration.
+
+### Features
+
+- Intercepts direct `cargo` commands before execution
+- **Dynamically lists available just and moon tasks** from the project
+- Provides specific suggestions for just/moon alternatives
+- Shows real-time available development commands
+- Explains benefits of using task orchestration
+- Quick 10-second timeout for minimal impact
+
+### Blocked Commands & Alternatives
+
+- `cargo build` → `just build`
+- `cargo test` → `just test` 
+- `cargo check` → `just check`
+- `cargo clippy` → `just check`
+- `cargo fmt` → `just check`
+- `cargo run` → `just run`
+- `cargo clean` → `just clean`
+
+### Dynamic Task Discovery
+
+When a cargo command is blocked, the hook automatically runs:
+
+- `just --list` to show all available just recipes with descriptions
+- `moon query tasks` to show all available moon tasks across crates
+
+This provides Claude with real-time, accurate information about what tasks are actually available in the project, eliminating the need to guess or look up commands manually.
+
 ## PostToolUse Hook: Rust Warning Detection
 
 The `rust-check.py` hook automatically runs after Edit, MultiEdit, or Write operations on Rust files (`.rs`) to detect compiler warnings and errors immediately.
@@ -14,13 +46,25 @@ The `rust-check.py` hook automatically runs after Edit, MultiEdit, or Write oper
 - Non-blocking - files are still written, but Claude gets feedback to fix issues
 - 30-second timeout to prevent hanging on long operations
 
-### Configuration
+## Configuration
 
-The hook is configured in `settings.json`:
+Both hooks are configured in `settings.json`:
 
 ```json
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/bash-cargo-check.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|MultiEdit|Write",
@@ -37,12 +81,12 @@ The hook is configured in `settings.json`:
 }
 ```
 
-### How it Works
+## Benefits
 
-1. When Claude edits any `.rs` file, the hook triggers after the edit completes
-2. The script runs `moon run :lint` to check for warnings/errors
-3. If issues are found, it extracts relevant warnings for the edited file
-4. Claude receives immediate feedback with the specific warnings to fix
-5. Claude can then automatically fix the issues in the next response
+These hooks ensure:
 
-This ensures that no Rust warnings or errors slip through in code that Claude writes.
+1. **Consistent workflows** - All development goes through moon task orchestration
+2. **No warnings slip through** - Rust code is checked immediately after editing
+3. **Immediate feedback** - Issues are caught and reported instantly
+4. **Better caching** - Moon's intelligent caching is always used
+5. **Proper dependencies** - Task dependencies are respected across crates

@@ -9,213 +9,247 @@ Tram combines the power of [clap](https://github.com/clap-rs/clap) for command-l
 - **Powerful CLI parsing** with clap's derive macros
 - **Session-based architecture** for complex application lifecycles
 - **Rich error handling** with beautiful diagnostics via miette
+- **Multi-crate workspace** structure for organizing complex applications
+- **Moon task runner** integration for efficient development workflows
+- **Proto toolchain management** for consistent development environments
+- **Built-in configuration management** with multiple source support
+- **Workspace detection** utilities for project-aware tools
+- **Claude Code hooks** for automated quality checks
 - **Terminal UI components** for interactive experiences
-- **Built-in tracing and logging** for debugging and monitoring
-- **Shell integration** for profile management and detection
-- **File system utilities** with glob patterns and locking
-- **Archive handling** for compression and extraction
-- **Event-driven architecture** for extensible applications
 
 ## Quick Start
 
 1. **Fork this repository** or use it as a template
 2. **Clone your fork** and navigate to the directory
-3. **Rename the project** in `Cargo.toml` to match your CLI tool
+3. **Install dependencies and setup toolchain**:
+
+```bash
+just setup
+```
+
 4. **Build and run** the starter application:
 
 ```bash
-cargo run -- --help
+just run -- --help
 ```
 
 ## Project Structure
 
 ```
-src/
-├── main.rs          # Application entry point
-├── cli.rs           # Command-line interface definitions
-├── session.rs       # Application session and lifecycle
-├── commands/        # CLI command implementations
-└── lib.rs           # Library code and utilities
+├── src/
+│   └── main.rs                 # Application entry point with clap + starbase integration
+├── crates/
+│   ├── tram-core/              # Core types and error handling
+│   ├── tram-config/            # Configuration management utilities
+│   └── tram-workspace/         # Workspace detection and project type identification
+├── .claude/
+│   ├── settings.json           # Claude Code hooks configuration
+│   └── hooks/                  # Automated quality check scripts
+├── Justfile                    # Development workflow recipes
+├── moon.yml                    # Moon task runner configuration
+└── .moon/
+    └── workspace.yml           # Moon workspace settings
+```
+
+## Development Workflow
+
+Tram uses [just](https://github.com/casey/just) for development commands and [moon](https://moonrepo.dev) for task orchestration:
+
+```bash
+# Quick development check (format, lint, build, test)
+just check
+
+# Run tests
+just test
+
+# Run your CLI with arguments
+just run -- init my-project --verbose
+
+# Build the project
+just build
+
+# Watch for changes and run checks automatically
+just watch
+
+# Show all available commands
+just --list
 ```
 
 ## Building Your CLI
 
 ### 1. Define Your Commands
 
-Use clap's derive API to define your CLI structure in `src/cli.rs`:
+Use clap's derive API to define your CLI structure in `src/main.rs`:
 
 ```rust
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(name = "mytool")]
 #[command(about = "A CLI tool built with Tram")]
 pub struct Cli {
+    /// Global options
+    #[command(flatten)]
+    pub global: GlobalOptions,
+
+    /// Subcommands
     #[command(subcommand)]
     pub command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Parser, Debug)]
 pub enum Commands {
     /// Initialize a new project
     Init {
-        /// Project name
         name: String,
-        /// Use verbose output
         #[arg(short, long)]
         verbose: bool,
     },
-    /// Build the project
-    Build {
-        /// Build in release mode
+    /// Show workspace information
+    Workspace {
         #[arg(short, long)]
-        release: bool,
+        detailed: bool,
     },
 }
 ```
 
 ### 2. Implement Your Session
 
-Create your application session in `src/session.rs`:
+Create your application session by implementing starbase's `AppSession` trait:
 
 ```rust
 use async_trait::async_trait;
-use starbase::{AppResult, AppSession};
-use std::path::PathBuf;
+use starbase::AppSession;
+use tram_core::AppResult;
 
 #[derive(Clone, Debug)]
 pub struct MySession {
-    pub workspace_root: PathBuf,
-    pub config: MyConfig,
+    pub config: tram_config::Config,
+    pub workspace: tram_workspace::WorkspaceDetector,
+    pub workspace_root: Option<PathBuf>,
 }
 
 #[async_trait]
 impl AppSession for MySession {
-    async fn startup(&mut self) -> AppResult {
-        // Initialize configuration, detect workspace
-        self.workspace_root = detect_workspace_root()?;
-        self.config = load_config(&self.workspace_root)?;
+    async fn startup(&mut self) -> AppResult<Option<u8>> {
+        // Load configuration from multiple sources
+        self.config = Config::load_from_args(&cli_args)?;
+
+        // Detect workspace root
+        if let Ok(root) = self.workspace.detect_root() {
+            self.workspace_root = Some(root);
+        }
+
         Ok(None)
     }
 
-    async fn analyze(&mut self) -> AppResult {
-        // Analyze environment, validate inputs
-        validate_workspace(&self.workspace_root)?;
+    async fn analyze(&mut self) -> AppResult<Option<u8>> {
+        // Validate environment, check dependencies
+        println!("Working in {} workspace", self.workspace_root.display());
         Ok(None)
     }
 
-    async fn shutdown(&mut self) -> AppResult {
+    async fn shutdown(&mut self) -> AppResult<Option<u8>> {
         // Cleanup resources
-        save_cache(&self.workspace_root)?;
+        println!("Done!");
         Ok(None)
     }
 }
 ```
 
-### 3. Handle Commands
+### 3. Extend with Additional Crates
 
-Implement your command logic in `src/commands/`:
-
-```rust
-use crate::{cli::Commands, session::MySession};
-use starbase::AppResult;
-
-pub async fn execute_command(
-    command: Commands,
-    session: &mut MySession,
-) -> AppResult {
-    match command {
-        Commands::Init { name, verbose } => {
-            init_project(&name, verbose, session).await
-        }
-        Commands::Build { release } => {
-            build_project(release, session).await
-        }
-    }
-}
-```
-
-## Development
+Add new functionality by creating additional crates:
 
 ```bash
-# Build the project
-cargo build
-
-# Run tests
-cargo test
-
-# Run your CLI with arguments
-cargo run -- init my-project --verbose
-
-# Check code quality
-cargo clippy
-
-# Format code
-cargo fmt
+just new-crate my-feature
 ```
 
-## Advanced Features
+This creates a new crate in `crates/my-feature/` with moon configuration and basic structure.
 
-### Terminal UI
+## Architecture
 
-Use starbase's console components for rich terminal interactions:
+### Multi-Crate Structure
+
+Tram uses a multi-crate workspace to organize functionality:
+
+- **`tram-core`** - Core types, error handling, and common utilities
+- **`tram-config`** - Configuration management with multiple source support (CLI, env, files)
+- **`tram-workspace`** - Workspace detection and project type identification
+
+### Moon Task Runner Integration
+
+Moon manages tasks across the workspace with intelligent dependency resolution and caching:
+
+```yaml
+# moon.yml - Root project configuration
+tasks:
+  build:
+    command: 'cargo build --workspace --all-targets --all-features'
+    deps:
+      - 'tram-core:build'
+      - 'tram-config:build'
+      - 'tram-workspace:build'
+```
+
+### Configuration Management
+
+Load configuration from multiple sources with proper precedence:
 
 ```rust
-use starbase_console::Console;
+use tram_config::Config;
 
-let console = Console::new();
-console.print_header("Building Project");
-
-let confirmed = console.confirm("Continue with build?")?;
-if confirmed {
-    let progress = console.progress_bar(100);
-    // ... build logic with progress updates
-}
+// CLI args > environment variables > config files > defaults
+let config = Config::load_from_args(&cli_args)?;
+config.validate()?;
 ```
 
-### Error Handling
+### Workspace Detection
 
-Define custom error types with rich diagnostics:
+Automatically detect project roots and types:
 
 ```rust
-use miette::Diagnostic;
-use thiserror::Error;
+use tram_workspace::{WorkspaceDetector, ProjectType};
 
-#[derive(Debug, Diagnostic, Error)]
-pub enum MyError {
-    #[error("Configuration file not found")]
-    #[diagnostic(code(config::not_found), help("Run 'mytool init' first"))]
-    ConfigNotFound,
-
-    #[error("Invalid project structure")]
-    #[diagnostic(code(project::invalid))]
-    InvalidProject,
-}
+let detector = WorkspaceDetector::new()?;
+let root = detector.detect_root()?;
+let project_type = ProjectType::detect(&root);
 ```
 
-### Event System
+### Quality Assurance
 
-Use starbase's event system for extensibility:
+Claude Code hooks automatically check for issues:
 
-```rust
-use starbase_events::{Event, EventEmitter};
+- **Rust compiler warnings** - Detected immediately after file edits
+- **Code formatting** - Integrated with moon's format tasks
+- **Linting** - Clippy runs with `-D warnings` to catch all issues
 
-#[derive(Event)]
-pub struct ProjectBuilt {
-    pub name: String,
-    pub duration: Duration,
-}
+## Development Environment
 
-// Emit events
-emitter.emit(ProjectBuilt {
-    name: "my-project".into(),
-    duration: build_duration,
-})?;
+### Setup
+
+```bash
+# Install proto and set up toolchain
+proto install
+
+# Initialize moon workspace
+moon setup && moon sync
 ```
 
-## Examples
+### Commands
 
-Check out the `examples/` directory for complete CLI application examples showing different patterns and use cases.
+```bash
+# Development workflow
+just check          # Format, lint, build, test
+just build [CRATE]   # Build workspace or specific crate
+just test [CRATE]    # Run tests
+just run [ARGS]      # Run the CLI
+
+# Project management
+just new-crate NAME  # Create new crate with moon config
+just clean           # Clean cargo + moon caches
+just graph           # Generate project dependency graph
+```
 
 ## Contributing
 
