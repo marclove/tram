@@ -22,6 +22,10 @@ Tram combines the power of [clap](https://github.com/clap-rs/clap) for command-l
 - **Claude Code hooks** for automated quality checks
 - **Behavior-driven development** patterns with comprehensive test coverage
 - **Terminal UI components** for interactive experiences
+- **Shell completion support** for bash, zsh, fish, and PowerShell
+- **Manual page generation** with automated build integration
+- **Comprehensive examples** demonstrating CLI patterns and best practices
+- **Built-in testing utilities** with fixtures and integration test support
 
 ## Quick Start
 
@@ -56,16 +60,36 @@ just run -- new --help
 
 ```
 ├── src/
-│   └── main.rs                 # Application entry point with clap + starbase integration
+│   ├── main.rs                 # Application entry point (orchestration only)
+│   ├── cli.rs                  # CLI argument parsing with clap derive
+│   ├── session.rs              # Application session and lifecycle management
+│   ├── commands.rs             # Command execution logic
+│   ├── dev_tools.rs            # Developer tools (completions, man pages)
+│   ├── examples.rs             # Example descriptions and guidance
+│   └── utils.rs                # Utility functions
 ├── crates/
-│   ├── tram-core/              # Core types, error handling, logging, and project initialization
-│   ├── tram-config/            # Multi-source configuration management (CLI, env, files)
-│   └── tram-workspace/         # Workspace detection and project type identification
+│   ├── tram-core/              # Core types, error handling, logging, project initialization
+│   ├── tram-config/            # Multi-source configuration management with hot reload
+│   ├── tram-workspace/         # Workspace detection and project type identification
+│   └── tram-test/              # Testing utilities, fixtures, and integration helpers
+├── examples/                   # Interactive CLI pattern demonstrations
+│   ├── basic_command.rs        # Fundamental clap + starbase integration
+│   ├── async_operations.rs     # Async patterns and concurrent operations
+│   ├── config_usage.rs         # Configuration system demonstration
+│   ├── progress_indicators.rs  # Progress bars and spinners
+│   ├── interactive_prompts.rs  # User input and interaction patterns
+│   └── file_operations.rs      # File system utilities and monitoring
+├── tests/                      # Integration tests with temporary directory management
+│   ├── common/                 # Shared test utilities and fixtures
+│   ├── cli_integration_test.rs # End-to-end CLI command testing
+│   ├── completions_integration_test.rs # Shell completion testing
+│   └── man_pages_integration_test.rs   # Manual page generation testing
 ├── .claude/
 │   ├── settings.json           # Claude Code hooks configuration
 │   └── hooks/                  # Automated quality check scripts
 ├── Justfile                    # Development workflow recipes
 ├── moon.yml                    # Moon task runner configuration
+├── build.rs                    # Build script for automatic man page generation
 └── .moon/
     └── workspace.yml           # Moon workspace settings
 ```
@@ -89,6 +113,20 @@ just run -- init my-project --verbose
 
 # Show workspace information
 just run -- workspace --detailed
+
+# Run interactive examples
+just run -- examples basic-command
+just run -- examples progress-indicators
+
+# Generate shell completions
+just run -- completions bash > tram.bash
+just run -- completions zsh > _tram
+
+# Generate manual pages
+just run -- man --output-dir ./docs
+
+# Generate code templates
+just run -- generate --template-type command backup --write
 
 # Build the project
 just build
@@ -168,6 +206,74 @@ tram watch --check
 logLevel = "debug"
 outputFormat = "json"
 color = false
+```
+
+### `examples` - Interactive CLI Examples
+```bash
+# View all available examples
+tram examples
+
+# Run specific examples to learn CLI patterns
+tram examples basic-command
+tram examples async-operations
+tram examples config-usage
+tram examples progress-indicators
+tram examples interactive-prompts
+tram examples file-operations
+
+# All examples include links to full interactive versions in examples/
+```
+
+### `completions` - Shell Completion Generation
+```bash
+# Generate bash completions
+tram completions bash
+
+# Generate completions for different shells
+tram completions zsh
+tram completions fish
+tram completions powershell
+
+# Install bash completions (Linux/macOS)
+tram completions bash > ~/.bash_completion.d/tram
+# OR add to ~/.bashrc:
+eval "$(tram completions bash)"
+
+# Install zsh completions
+mkdir -p ~/.zsh/completions
+tram completions zsh > ~/.zsh/completions/_tram
+
+# Install fish completions
+tram completions fish > ~/.config/fish/completions/tram.fish
+```
+
+### `man` - Manual Page Generation
+```bash
+# Generate manual pages for all commands
+tram man --output-dir ./man
+
+# Generate only main command manual (section 1)
+tram man --output-dir ./man --section 1
+
+# Install manual pages system-wide
+sudo cp ./man/*.1 /usr/local/share/man/man1/
+sudo mandb
+
+# View locally generated manual pages
+man -M ./man tram
+man -M ./man tram-new
+```
+
+### `generate` - Template Generation
+```bash
+# Generate command templates (view output)
+tram generate --template-type command my-backup
+
+# Generate and write to filesystem
+tram generate --template-type command backup-tool --write --description "Backup utility"
+
+# Generate configuration section templates
+tram generate --template-type config-section database --write
 ```
 
 ### Global Options
@@ -281,9 +387,22 @@ This creates a new crate in `crates/my-feature/` with moon configuration and bas
 
 Tram uses a multi-crate workspace to organize functionality:
 
-- **`tram-core`** - Core types, error handling, and common utilities
-- **`tram-config`** - Configuration management with multiple source support (CLI, env, files)
-- **`tram-workspace`** - Workspace detection and project type identification
+- **`tram-core`** - Core types, error handling, project initialization, and common utilities
+- **`tram-config`** - Configuration management with multiple source support and hot reload
+- **`tram-workspace`** - Workspace detection and project type identification  
+- **`tram-test`** - Testing utilities, fixtures, and integration test helpers
+
+### Modular Architecture
+
+The main binary is organized into focused modules:
+
+- **`cli.rs`** - CLI argument parsing with clap derive API
+- **`session.rs`** - Application session implementing starbase AppSession trait
+- **`commands.rs`** - Command execution logic for all subcommands
+- **`dev_tools.rs`** - Developer tools (shell completions, manual pages)
+- **`examples.rs`** - Example descriptions and guidance system
+- **`utils.rs`** - Shared utility functions for parsing and display
+- **`main.rs`** - Minimal orchestration (92 lines, down from 858 lines)
 
 ### Moon Task Runner Integration
 
@@ -351,6 +470,34 @@ let detector = WorkspaceDetector::new()?;
 let root = detector.detect_root()?;
 let project_type = ProjectType::detect(&root);
 ```
+
+### Testing Utilities
+
+The `tram-test` crate provides comprehensive testing infrastructure:
+
+```rust
+use tram_test::{TempDir, TramCommand, FileAssertions};
+
+#[test]
+fn test_my_command() {
+    let temp_dir = TempDir::new("test-workspace").unwrap();
+    
+    let output = TramCommand::new()
+        .current_dir(temp_dir.path())
+        .args(["new", "my-project", "--skip-prompts"])
+        .assert_success();
+    
+    output.assert_stdout_contains("Created new project");
+    FileAssertions::assert_dir_exists(temp_dir.path().join("my-project"));
+}
+```
+
+**Features:**
+- **TramCommand**: CLI testing helper with clean environment setup
+- **TempDir**: Automatic temporary directory management with cleanup
+- **FileAssertions**: File system testing utilities
+- **MockBuilder**: Create mock objects for complex testing scenarios
+- **Integration test support**: Workspace-level tests with artifact management
 
 ### Core Utilities
 

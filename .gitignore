@@ -24,3 +24,7 @@ target
 .claude/settings.local.json
 /.moon/cache
 /llmc.toml
+
+# Test artifacts and temporary files
+/tmp/
+/test-tmp/

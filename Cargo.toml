@@ -20,6 +20,7 @@ async-trait = "0.1"
 # CLI parsing
 clap = { version = "4.0", features = ["derive", "env"] }
 clap_complete = "4.0"
+clap_mangen = "0.2"
 
 # Error handling
 thiserror = "1.0"
@@ -67,6 +68,12 @@ version = "3.0"
 [workspace.dependencies.tokio-test]
 version = "0.4"
 
+[workspace.dependencies.regex]
+version = "1.0"
+
+[workspace.dependencies.env_logger]
+version = "0.11"
+
 # Root binary package
 [package]
 name = "tram"
@@ -112,6 +119,7 @@ tram-workspace = { path = "crates/tram-workspace" }
 
 clap.workspace = true
 clap_complete.workspace = true
+clap_mangen.workspace = true
 tokio.workspace = true
 miette.workspace = true
 async-trait.workspace = true
@@ -127,3 +135,14 @@ dialoguer.workspace = true
 md5.workspace = true
 walkdir.workspace = true
 glob.workspace = true
+
+[build-dependencies]
+clap.workspace = true
+clap_mangen.workspace = true
+clap_complete.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio-test.workspace = true
+regex.workspace = true
+env_logger.workspace = true
