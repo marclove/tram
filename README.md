@@ -1,3 +1,5 @@
+<img width="1280" height="640" alt="tram" src="https://github.com/user-attachments/assets/69138346-5acb-4ac8-9092-a2ff83ea949c" />
+
 # Tram
 
 A batteries-included starter kit for building production-ready CLI applications in Rust.
