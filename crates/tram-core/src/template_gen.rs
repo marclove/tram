@@ -1,9 +1,11 @@
-//! Template generation for common CLI patterns.
+//! Template generation for common CLI patterns using Handlebars.
 //!
 //! Provides utilities for generating boilerplate code for common CLI patterns,
 //! helping developers quickly add new functionality to their applications.
 
 use crate::{AppResult, TramError};
+use handlebars::Handlebars;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -34,18 +36,20 @@ pub struct TemplateConfig {
     pub parameters: HashMap<String, String>,
 }
 
-/// Service for generating templates from common CLI patterns.
+/// Service for generating templates from common CLI patterns using Handlebars.
 pub struct TemplateGenerator {
-    // Future: Cache for preloaded templates
-    #[allow(dead_code)]
-    templates_cache: HashMap<TemplateType, String>,
+    /// Handlebars instance for template rendering
+    handlebars: Handlebars<'static>,
 }
 
 impl TemplateGenerator {
-    pub fn new() -> Self {
-        Self {
-            templates_cache: HashMap::new(),
-        }
+    pub fn new() -> AppResult<Self> {
+        let mut handlebars = Handlebars::new();
+        
+        // Register built-in templates
+        Self::register_templates(&mut handlebars)?;
+        
+        Ok(Self { handlebars })
     }
 
     /// Generate a template based on the provided configuration.
@@ -71,7 +75,7 @@ impl TemplateGenerator {
         }
 
         // Behavior: Should generate appropriate content based on template type
-        let content = self.generate_content(config)?;
+        let content = self.render_template(config)?;
         let file_path = self.determine_file_path(config)?;
 
         // Behavior: Should not overwrite existing files without confirmation
@@ -113,14 +117,79 @@ impl TemplateGenerator {
         Ok(())
     }
 
-    /// Generate content based on template type and configuration.
-    fn generate_content(&self, config: &TemplateConfig) -> AppResult<String> {
-        match config.template_type {
-            TemplateType::Command => self.generate_command_template(config),
-            TemplateType::ConfigSection => self.generate_config_section_template(config),
-            TemplateType::ErrorType => self.generate_error_type_template(config),
-            TemplateType::SessionExtension => self.generate_session_extension_template(config),
+    /// Register all built-in templates with Handlebars.
+    fn register_templates(handlebars: &mut Handlebars) -> AppResult<()> {
+        // Register command template
+        handlebars
+            .register_template_string("command", include_str!("templates/command.hbs"))
+            .map_err(|e| TramError::InvalidConfig {
+                message: format!("Failed to register command template: {}", e),
+            })?;
+
+        // Register config section template
+        handlebars
+            .register_template_string("config_section", include_str!("templates/config_section.hbs"))
+            .map_err(|e| TramError::InvalidConfig {
+                message: format!("Failed to register config section template: {}", e),
+            })?;
+
+        // Register error type template
+        handlebars
+            .register_template_string("error_type", include_str!("templates/error_type.hbs"))
+            .map_err(|e| TramError::InvalidConfig {
+                message: format!("Failed to register error type template: {}", e),
+            })?;
+
+        // Register session extension template
+        handlebars
+            .register_template_string("session_extension", include_str!("templates/session_extension.hbs"))
+            .map_err(|e| TramError::InvalidConfig {
+                message: format!("Failed to register session extension template: {}", e),
+            })?;
+
+        Ok(())
+    }
+
+    /// Render template using Handlebars with the provided configuration.
+    fn render_template(&self, config: &TemplateConfig) -> AppResult<String> {
+        let template_name = self.get_template_name(&config.template_type);
+        let context = self.build_template_context(config);
+
+        self.handlebars
+            .render(template_name, &context)
+            .map_err(|e| TramError::InvalidConfig {
+                message: format!("Failed to render {} template: {}", template_name, e),
+            }.into())
+    }
+
+    /// Get the template name for a given template type.
+    fn get_template_name(&self, template_type: &TemplateType) -> &'static str {
+        match template_type {
+            TemplateType::Command => "command",
+            TemplateType::ConfigSection => "config_section",
+            TemplateType::ErrorType => "error_type",
+            TemplateType::SessionExtension => "session_extension",
         }
+    }
+
+    /// Build the context data for template rendering.
+    fn build_template_context(&self, config: &TemplateConfig) -> Value {
+        let name = &config.name;
+        let name_pascal = to_pascal_case(name);
+        let name_upper = name.to_uppercase();
+        let description = config
+            .parameters
+            .get("description")
+            .unwrap_or(&format!("{} functionality", name))
+            .clone();
+
+        json!({
+            "name": name,
+            "name_pascal": name_pascal,
+            "name_upper": name_upper,
+            "description": description,
+            "parameters": config.parameters
+        })
     }
 
     /// Determine the appropriate file path for the generated template.
@@ -148,627 +217,11 @@ impl TemplateGenerator {
                 .join(format!("{}.rs", config.name))),
         }
     }
-
-    fn generate_command_template(&self, config: &TemplateConfig) -> AppResult<String> {
-        let command_name = &config.name;
-        let command_name_pascal = to_pascal_case(command_name);
-        let default_description = format!("{} command", command_name);
-        let description = config
-            .parameters
-            .get("description")
-            .unwrap_or(&default_description);
-
-        let template = format!(
-            r#"//! {} command implementation.
-
-use clap::Parser;
-use tracing::{{info, debug}};
-use crate::{{AppResult, TramError}};
-
-/// {} command arguments.
-#[derive(Parser, Debug)]
-pub struct {}Args {{
-    /// Enable verbose output
-    #[arg(short, long)]
-    pub verbose: bool,
-    
-    /// Dry run mode - show what would be done without executing
-    #[arg(long)]
-    pub dry_run: bool,
-}}
-
-/// Execute the {} command.
-pub async fn execute(args: {}Args) -> AppResult<()> {{
-    info!("Executing {} command");
-    
-    if args.verbose {{
-        debug!("Verbose mode enabled");
-        debug!("Arguments: {{:?}}", args);
-    }}
-    
-    if args.dry_run {{
-        println!("DRY RUN: Would execute {} command");
-        return Ok(());
-    }}
-    
-    // TODO: Implement {} command logic here
-    println!("Running {} command...");
-    
-    // Example error handling
-    // return Err(TramError::InvalidConfig {{
-    //     message: "Example error message".to_string(),
-    // }}.into());
-    
-    println!("{} command completed successfully!");
-    Ok(())
-}}
-
-#[cfg(test)]
-mod tests {{
-    use super::*;
-    
-    #[tokio::test]
-    async fn test_{}_command_success() {{
-        let args = {}Args {{
-            verbose: false,
-            dry_run: false,
-        }};
-        
-        let result = execute(args).await;
-        assert!(result.is_ok(), "Command should execute successfully");
-    }}
-    
-    #[tokio::test]
-    async fn test_{}_command_dry_run() {{
-        let args = {}Args {{
-            verbose: true,
-            dry_run: true,
-        }};
-        
-        let result = execute(args).await;
-        assert!(result.is_ok(), "Dry run should complete successfully");
-    }}
-}}
-"#,
-            description,         // comment
-            command_name_pascal, // struct comment
-            command_name_pascal, // struct name
-            command_name,        // function comment
-            command_name_pascal, // function parameter type
-            command_name,        // info log
-            command_name,        // dry run message
-            command_name,        // TODO comment
-            command_name,        // Running message
-            command_name_pascal, // Success message
-            command_name,        // test function name
-            command_name_pascal, // test args type
-            command_name,        // second test function name
-            command_name_pascal, // second test args type
-        );
-
-        Ok(template)
-    }
-
-    fn generate_config_section_template(&self, config: &TemplateConfig) -> AppResult<String> {
-        let section_name = &config.name;
-        let section_name_pascal = to_pascal_case(section_name);
-
-        let template = format!(
-            r#"//! {} configuration section.
-
-use serde::{{Deserialize, Serialize}};
-use std::path::PathBuf;
-use crate::{{AppResult, TramError}};
-
-/// Configuration for {} functionality.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct {}Config {{
-    /// Enable {} functionality
-    pub enabled: bool,
-    
-    /// {} timeout in seconds
-    pub timeout: u64,
-    
-    /// {} working directory
-    pub working_dir: Option<PathBuf>,
-    
-    /// Additional {} options
-    pub options: Vec<String>,
-}}
-
-impl Default for {}Config {{
-    fn default() -> Self {{
-        Self {{
-            enabled: true,
-            timeout: 30,
-            working_dir: None,
-            options: Vec::new(),
-        }}
-    }}
-}}
-
-impl {}Config {{
-    /// Validate the {} configuration.
-    pub fn validate(&self) -> AppResult<()> {{
-        if self.timeout == 0 {{
-            return Err(TramError::InvalidConfig {{
-                message: "{} timeout must be greater than 0".to_string(),
-            }}.into());
-        }}
-        
-        if let Some(dir) = &self.working_dir {{
-            if !dir.exists() {{
-                return Err(TramError::InvalidConfig {{
-                    message: format!("{} working directory does not exist: {{}}", dir.display()),
-                }}.into());
-            }}
-        }}
-        
-        Ok(())
-    }}
-    
-    /// Load {} configuration from environment variables.
-    pub fn load_from_env(&mut self) {{
-        if let Ok(enabled) = std::env::var("TRAM_{}_ENABLED") {{
-            self.enabled = enabled.parse().unwrap_or(self.enabled);
-        }}
-        
-        if let Ok(timeout) = std::env::var("TRAM_{}_TIMEOUT") {{
-            self.timeout = timeout.parse().unwrap_or(self.timeout);
-        }}
-        
-        if let Ok(working_dir) = std::env::var("TRAM_{}_WORKING_DIR") {{
-            self.working_dir = Some(PathBuf::from(working_dir));
-        }}
-    }}
-}}
-
-#[cfg(test)]
-mod tests {{
-    use super::*;
-    use tempfile::TempDir;
-    
-    #[test]
-    fn test_{}_config_default() {{
-        let config = {}Config::default();
-        assert!(config.enabled);
-        assert_eq!(config.timeout, 30);
-        assert!(config.working_dir.is_none());
-        assert!(config.options.is_empty());
-    }}
-    
-    #[test]
-    fn test_{}_config_validation_success() {{
-        let config = {}Config::default();
-        assert!(config.validate().is_ok());
-    }}
-    
-    #[test]
-    fn test_{}_config_validation_timeout_error() {{
-        let mut config = {}Config::default();
-        config.timeout = 0;
-        
-        let result = config.validate();
-        assert!(result.is_err());
-    }}
-    
-    #[test]
-    fn test_{}_config_validation_directory_error() {{
-        let mut config = {}Config::default();
-        config.working_dir = Some(PathBuf::from("/nonexistent/directory"));
-        
-        let result = config.validate();
-        assert!(result.is_err());
-    }}
-}}
-"#,
-            section_name,                // comment
-            section_name,                // struct comment
-            section_name_pascal,         // struct name
-            section_name,                // enabled field comment
-            section_name,                // timeout field comment
-            section_name,                // working_dir field comment
-            section_name,                // options field comment
-            section_name_pascal,         // Default impl
-            section_name_pascal,         // validate impl
-            section_name,                // validate comment
-            section_name_pascal,         // timeout error
-            section_name_pascal,         // working directory error
-            section_name,                // load_from_env comment
-            section_name.to_uppercase(), // ENABLED env var
-            section_name.to_uppercase(), // TIMEOUT env var
-            section_name.to_uppercase(), // WORKING_DIR env var
-            section_name,                // test function name
-            section_name_pascal,         // test default type
-            section_name,                // test validation success
-            section_name_pascal,         // test validation type
-            section_name,                // test validation timeout
-            section_name_pascal,         // test validation timeout type
-            section_name,                // test validation directory
-            section_name_pascal,         // test validation directory type
-        );
-
-        Ok(template)
-    }
-
-    fn generate_error_type_template(&self, config: &TemplateConfig) -> AppResult<String> {
-        let error_name = &config.name;
-        let error_name_pascal = to_pascal_case(error_name);
-
-        let template = format!(
-            r#"//! {} specific error types.
-
-use miette::Diagnostic;
-use thiserror::Error;
-
-/// Errors specific to {} functionality.
-#[derive(Debug, Diagnostic, Error)]
-pub enum {}Error {{
-    #[error("{} operation failed: {{message}}")]
-    #[diagnostic(
-        code(tram::{}_operation_failed),
-        help("Check the {} configuration and try again")
-    )]
-    OperationFailed {{ message: String }},
-    
-    #[error("{} resource not found: {{resource}}")]
-    #[diagnostic(
-        code(tram::{}_resource_not_found),
-        help("Ensure the {} resource exists and is accessible")
-    )]
-    ResourceNotFound {{ resource: String }},
-    
-    #[error("{} timeout after {{timeout}}s")]
-    #[diagnostic(
-        code(tram::{}_timeout),
-        help("Increase the timeout value or check {} service availability")
-    )]
-    Timeout {{ timeout: u64 }},
-    
-    #[error("{} configuration invalid: {{message}}")]
-    #[diagnostic(
-        code(tram::{}_invalid_config),
-        help("Review the {} configuration file and fix any errors")
-    )]
-    InvalidConfig {{ message: String }},
-}}
-
-impl {}Error {{
-    /// Create an operation failed error with a custom message.
-    pub fn operation_failed<S: Into<String>>(message: S) -> Self {{
-        Self::OperationFailed {{
-            message: message.into(),
-        }}
-    }}
-    
-    /// Create a resource not found error.
-    pub fn resource_not_found<S: Into<String>>(resource: S) -> Self {{
-        Self::ResourceNotFound {{
-            resource: resource.into(),
-        }}
-    }}
-    
-    /// Create a timeout error.
-    pub fn timeout(timeout: u64) -> Self {{
-        Self::Timeout {{ timeout }}
-    }}
-    
-    /// Create an invalid configuration error.
-    pub fn invalid_config<S: Into<String>>(message: S) -> Self {{
-        Self::InvalidConfig {{
-            message: message.into(),
-        }}
-    }}
-}}
-
-#[cfg(test)]
-mod tests {{
-    use super::*;
-    
-    #[test]
-    fn test_{}_error_operation_failed() {{
-        let error = {}Error::operation_failed("test message");
-        assert!(matches!(error, {}Error::OperationFailed {{ .. }}));
-        assert_eq!(error.to_string(), "{} operation failed: test message");
-    }}
-    
-    #[test]
-    fn test_{}_error_resource_not_found() {{
-        let error = {}Error::resource_not_found("test.txt");
-        assert!(matches!(error, {}Error::ResourceNotFound {{ .. }}));
-        assert_eq!(error.to_string(), "{} resource not found: test.txt");
-    }}
-    
-    #[test]
-    fn test_{}_error_timeout() {{
-        let error = {}Error::timeout(30);
-        assert!(matches!(error, {}Error::Timeout {{ .. }}));
-        assert_eq!(error.to_string(), "{} timeout after 30s");
-    }}
-    
-    #[test]
-    fn test_{}_error_invalid_config() {{
-        let error = {}Error::invalid_config("bad value");
-        assert!(matches!(error, {}Error::InvalidConfig {{ .. }}));
-        assert_eq!(error.to_string(), "{} configuration invalid: bad value");
-    }}
-}}
-"#,
-            error_name,        // comment
-            error_name,        // enum comment
-            error_name_pascal, // enum name
-            error_name_pascal, // OperationFailed error message
-            error_name,        // diagnostic code
-            error_name,        // diagnostic help
-            error_name_pascal, // ResourceNotFound error message
-            error_name,        // diagnostic code
-            error_name,        // diagnostic help
-            error_name_pascal, // Timeout error message
-            error_name,        // diagnostic code
-            error_name,        // diagnostic help
-            error_name_pascal, // InvalidConfig error message
-            error_name,        // diagnostic code
-            error_name,        // diagnostic help
-            error_name_pascal, // impl block
-            error_name,        // test operation failed
-            error_name_pascal, // test operation failed type
-            error_name_pascal, // test operation failed match
-            error_name_pascal, // test operation failed message
-            error_name,        // test resource not found
-            error_name_pascal, // test resource not found type
-            error_name_pascal, // test resource not found match
-            error_name_pascal, // test resource not found message
-            error_name,        // test timeout
-            error_name_pascal, // test timeout type
-            error_name_pascal, // test timeout match
-            error_name_pascal, // test timeout message
-            error_name,        // test invalid config
-            error_name_pascal, // test invalid config type
-            error_name_pascal, // test invalid config match
-            error_name_pascal, // test invalid config message
-        );
-
-        Ok(template)
-    }
-
-    fn generate_session_extension_template(&self, config: &TemplateConfig) -> AppResult<String> {
-        let extension_name = &config.name;
-        let extension_name_pascal = to_pascal_case(extension_name);
-
-        let template = format!(
-            r#"//! Session extension for {} functionality.
-
-use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use crate::{{AppResult, TramError}};
-
-/// {} session extension data.
-#[derive(Debug, Clone)]
-pub struct {}Extension {{
-    /// {} state
-    pub state: Arc<RwLock<{}State>>,
-    
-    /// {} configuration
-    pub config: {}Config,
-}}
-
-/// Internal state for {} functionality.
-#[derive(Debug, Default)]
-pub struct {}State {{
-    /// Whether {} is initialized
-    pub initialized: bool,
-    
-    /// {} operation count
-    pub operation_count: u64,
-    
-    /// Last {} operation timestamp
-    pub last_operation: Option<std::time::SystemTime>,
-}}
-
-/// Configuration for {} session extension.
-#[derive(Debug, Clone)]
-pub struct {}Config {{
-    /// Enable {} extension
-    pub enabled: bool,
-    
-    /// {} operation timeout in seconds
-    pub timeout: u64,
-    
-    /// Maximum number of concurrent {} operations
-    pub max_concurrent: u32,
-}}
-
-impl Default for {}Config {{
-    fn default() -> Self {{
-        Self {{
-            enabled: true,
-            timeout: 30,
-            max_concurrent: 10,
-        }}
-    }}
-}}
-
-impl {}Extension {{
-    /// Create a new {} extension.
-    pub fn new(config: {}Config) -> Self {{
-        Self {{
-            state: Arc::new(RwLock::new({}State::default())),
-            config,
-        }}
-    }}
-    
-    /// Initialize the {} extension.
-    pub async fn initialize(&self) -> AppResult<()> {{
-        let mut state = self.state.write().await;
-        
-        if state.initialized {{
-            return Ok(());
-        }}
-        
-        // TODO: Add {} initialization logic here
-        
-        state.initialized = true;
-        state.last_operation = Some(std::time::SystemTime::now());
-        
-        Ok(())
-    }}
-    
-    /// Execute a {} operation.
-    pub async fn execute_operation(&self, operation_name: &str) -> AppResult<()> {{
-        if !self.config.enabled {{
-            return Err(TramError::InvalidConfig {{
-                message: "{} extension is disabled".to_string(),
-            }}.into());
-        }}
-        
-        let mut state = self.state.write().await;
-        
-        if !state.initialized {{
-            return Err(TramError::InvalidConfig {{
-                message: "{} extension not initialized".to_string(),
-            }}.into());
-        }}
-        
-        // TODO: Add {} operation logic here
-        println!("Executing {} operation: {{}}", operation_name);
-        
-        state.operation_count += 1;
-        state.last_operation = Some(std::time::SystemTime::now());
-        
-        Ok(())
-    }}
-    
-    /// Get {} statistics.
-    pub async fn get_stats(&self) -> AppResult<{}Stats> {{
-        let state = self.state.read().await;
-        
-        Ok({}Stats {{
-            initialized: state.initialized,
-            operation_count: state.operation_count,
-            last_operation: state.last_operation,
-        }})
-    }}
-}}
-
-/// {} statistics.
-#[derive(Debug, Clone)]
-pub struct {}Stats {{
-    /// Whether {} is initialized
-    pub initialized: bool,
-    
-    /// Number of {} operations performed
-    pub operation_count: u64,
-    
-    /// Timestamp of last {} operation
-    pub last_operation: Option<std::time::SystemTime>,
-}}
-
-#[cfg(test)]
-mod tests {{
-    use super::*;
-    
-    #[tokio::test]
-    async fn test_{}_extension_creation() {{
-        let config = {}Config::default();
-        let extension = {}Extension::new(config);
-        
-        let stats = extension.get_stats().await.unwrap();
-        assert!(!stats.initialized);
-        assert_eq!(stats.operation_count, 0);
-    }}
-    
-    #[tokio::test]
-    async fn test_{}_extension_initialization() {{
-        let config = {}Config::default();
-        let extension = {}Extension::new(config);
-        
-        extension.initialize().await.unwrap();
-        
-        let stats = extension.get_stats().await.unwrap();
-        assert!(stats.initialized);
-    }}
-    
-    #[tokio::test]
-    async fn test_{}_extension_operation() {{
-        let config = {}Config::default();
-        let extension = {}Extension::new(config);
-        
-        extension.initialize().await.unwrap();
-        extension.execute_operation("test").await.unwrap();
-        
-        let stats = extension.get_stats().await.unwrap();
-        assert_eq!(stats.operation_count, 1);
-    }}
-    
-    #[tokio::test]
-    async fn test_{}_extension_operation_without_init() {{
-        let config = {}Config::default();
-        let extension = {}Extension::new(config);
-        
-        let result = extension.execute_operation("test").await;
-        assert!(result.is_err());
-    }}
-}}
-"#,
-            extension_name,        // comment
-            extension_name_pascal, // Extension struct comment
-            extension_name_pascal, // Extension struct name
-            extension_name,        // state field comment
-            extension_name_pascal, // State type
-            extension_name,        // config field comment
-            extension_name_pascal, // Config type
-            extension_name,        // State struct comment
-            extension_name_pascal, // State struct name
-            extension_name,        // initialized field comment
-            extension_name,        // operation_count field comment
-            extension_name,        // last_operation field comment
-            extension_name,        // Config struct comment
-            extension_name_pascal, // Config struct name
-            extension_name,        // enabled field comment
-            extension_name,        // timeout field comment
-            extension_name,        // max_concurrent field comment
-            extension_name_pascal, // Config default impl
-            extension_name_pascal, // Extension impl
-            extension_name,        // new function comment
-            extension_name_pascal, // new function config param
-            extension_name_pascal, // State default
-            extension_name,        // initialize comment
-            extension_name,        // TODO comment
-            extension_name,        // execute_operation comment
-            extension_name_pascal, // extension disabled error
-            extension_name_pascal, // not initialized error
-            extension_name,        // TODO operation comment
-            extension_name,        // operation println
-            extension_name,        // get_stats comment
-            extension_name_pascal, // Stats return type
-            extension_name_pascal, // Stats struct creation
-            extension_name_pascal, // Stats struct comment
-            extension_name_pascal, // Stats struct name
-            extension_name,        // initialized field comment
-            extension_name,        // operation_count field comment
-            extension_name,        // last_operation field comment
-            extension_name,        // test creation function name
-            extension_name_pascal, // test Config type
-            extension_name_pascal, // test Extension type
-            extension_name,        // test initialization function name
-            extension_name_pascal, // test Config type
-            extension_name_pascal, // test Extension type
-            extension_name,        // test operation function name
-            extension_name_pascal, // test Config type
-            extension_name_pascal, // test Extension type
-            extension_name,        // test operation without init function name
-            extension_name_pascal, // test Config type
-            extension_name_pascal, // test Extension type
-        );
-
-        Ok(template)
-    }
 }
 
 impl Default for TemplateGenerator {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("Failed to create default TemplateGenerator")
     }
 }
 
@@ -818,7 +271,7 @@ mod tests {
                 .collect(),
         };
 
-        let generator = TemplateGenerator::new();
+        let generator = TemplateGenerator::new().unwrap();
         let result = generator.generate_template(&config);
 
         assert!(
@@ -844,7 +297,7 @@ mod tests {
             parameters: HashMap::new(),
         };
 
-        let generator = TemplateGenerator::new();
+        let generator = TemplateGenerator::new().unwrap();
         let result = generator.generate_template(&config);
 
         assert!(
@@ -870,7 +323,7 @@ mod tests {
             parameters: HashMap::new(),
         };
 
-        let generator = TemplateGenerator::new();
+        let generator = TemplateGenerator::new().unwrap();
         let result = generator.generate_template(&config);
 
         assert!(result.is_err(), "Should fail with empty template name");
@@ -885,7 +338,7 @@ mod tests {
             parameters: HashMap::new(),
         };
 
-        let generator = TemplateGenerator::new();
+        let generator = TemplateGenerator::new().unwrap();
         let result = generator.generate_template(&config);
 
         assert!(result.is_err(), "Should fail with nonexistent directory");
@@ -902,7 +355,7 @@ mod tests {
             name: "test".to_string(),
         };
 
-        let generator = TemplateGenerator::new();
+        let generator = TemplateGenerator::new().unwrap();
         let result = generator.write_template(&template);
 
         assert!(result.is_ok(), "Should write template successfully");

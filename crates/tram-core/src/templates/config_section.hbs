@@ -1,0 +1,107 @@
+//! {{name_pascal}} configuration section.
+
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use crate::{AppResult, TramError};
+
+/// Configuration for {{description}}.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct {{name_pascal}}Config {
+    /// Enable {{name}} functionality
+    pub enabled: bool,
+    
+    /// {{name_pascal}} timeout in seconds
+    pub timeout: u64,
+    
+    /// {{name_pascal}} working directory
+    pub working_dir: Option<PathBuf>,
+    
+    /// Additional {{name}} options
+    pub options: Vec<String>,
+}
+
+impl Default for {{name_pascal}}Config {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            timeout: 30,
+            working_dir: None,
+            options: Vec::new(),
+        }
+    }
+}
+
+impl {{name_pascal}}Config {
+    /// Validate the {{name}} configuration.
+    pub fn validate(&self) -> AppResult<()> {
+        if self.timeout == 0 {
+            return Err(TramError::InvalidConfig {
+                message: "{{name_pascal}} timeout must be greater than 0".to_string(),
+            }.into());
+        }
+        
+        if let Some(dir) = &self.working_dir {
+            if !dir.exists() {
+                return Err(TramError::InvalidConfig {
+                    message: format!("{{name_pascal}} working directory does not exist: {}", dir.display()),
+                }.into());
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Load {{name}} configuration from environment variables.
+    pub fn load_from_env(&mut self) {
+        if let Ok(enabled) = std::env::var("TRAM_{{name_upper}}_ENABLED") {
+            self.enabled = enabled.parse().unwrap_or(self.enabled);
+        }
+        
+        if let Ok(timeout) = std::env::var("TRAM_{{name_upper}}_TIMEOUT") {
+            self.timeout = timeout.parse().unwrap_or(self.timeout);
+        }
+        
+        if let Ok(working_dir) = std::env::var("TRAM_{{name_upper}}_WORKING_DIR") {
+            self.working_dir = Some(PathBuf::from(working_dir));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    
+    #[test]
+    fn test_{{name}}_config_default() {
+        let config = {{name_pascal}}Config::default();
+        assert!(config.enabled);
+        assert_eq!(config.timeout, 30);
+        assert!(config.working_dir.is_none());
+        assert!(config.options.is_empty());
+    }
+    
+    #[test]
+    fn test_{{name}}_config_validation_success() {
+        let config = {{name_pascal}}Config::default();
+        assert!(config.validate().is_ok());
+    }
+    
+    #[test]
+    fn test_{{name}}_config_validation_timeout_error() {
+        let mut config = {{name_pascal}}Config::default();
+        config.timeout = 0;
+        
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_{{name}}_config_validation_directory_error() {
+        let mut config = {{name_pascal}}Config::default();
+        config.working_dir = Some(PathBuf::from("/nonexistent/directory"));
+        
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+}

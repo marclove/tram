@@ -1,0 +1,97 @@
+//! {{name_pascal}} specific error types.
+
+use miette::Diagnostic;
+use thiserror::Error;
+
+/// Errors specific to {{description}}.
+#[derive(Debug, Diagnostic, Error)]
+pub enum {{name_pascal}}Error {
+    #[error("{{name_pascal}} operation failed: {message}")]
+    #[diagnostic(
+        code(tram::{{name}}_operation_failed),
+        help("Check the {{name}} configuration and try again")
+    )]
+    OperationFailed { message: String },
+    
+    #[error("{{name_pascal}} resource not found: {resource}")]
+    #[diagnostic(
+        code(tram::{{name}}_resource_not_found),
+        help("Ensure the {{name}} resource exists and is accessible")
+    )]
+    ResourceNotFound { resource: String },
+    
+    #[error("{{name_pascal}} timeout after {timeout}s")]
+    #[diagnostic(
+        code(tram::{{name}}_timeout),
+        help("Increase the timeout value or check {{name}} service availability")
+    )]
+    Timeout { timeout: u64 },
+    
+    #[error("{{name_pascal}} configuration invalid: {message}")]
+    #[diagnostic(
+        code(tram::{{name}}_invalid_config),
+        help("Review the {{name}} configuration file and fix any errors")
+    )]
+    InvalidConfig { message: String },
+}
+
+impl {{name_pascal}}Error {
+    /// Create an operation failed error with a custom message.
+    pub fn operation_failed<S: Into<String>>(message: S) -> Self {
+        Self::OperationFailed {
+            message: message.into(),
+        }
+    }
+    
+    /// Create a resource not found error.
+    pub fn resource_not_found<S: Into<String>>(resource: S) -> Self {
+        Self::ResourceNotFound {
+            resource: resource.into(),
+        }
+    }
+    
+    /// Create a timeout error.
+    pub fn timeout(timeout: u64) -> Self {
+        Self::Timeout { timeout }
+    }
+    
+    /// Create an invalid configuration error.
+    pub fn invalid_config<S: Into<String>>(message: S) -> Self {
+        Self::InvalidConfig {
+            message: message.into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_{{name}}_error_operation_failed() {
+        let error = {{name_pascal}}Error::operation_failed("test message");
+        assert!(matches!(error, {{name_pascal}}Error::OperationFailed { .. }));
+        assert_eq!(error.to_string(), "{{name_pascal}} operation failed: test message");
+    }
+    
+    #[test]
+    fn test_{{name}}_error_resource_not_found() {
+        let error = {{name_pascal}}Error::resource_not_found("test.txt");
+        assert!(matches!(error, {{name_pascal}}Error::ResourceNotFound { .. }));
+        assert_eq!(error.to_string(), "{{name_pascal}} resource not found: test.txt");
+    }
+    
+    #[test]
+    fn test_{{name}}_error_timeout() {
+        let error = {{name_pascal}}Error::timeout(30);
+        assert!(matches!(error, {{name_pascal}}Error::Timeout { .. }));
+        assert_eq!(error.to_string(), "{{name_pascal}} timeout after 30s");
+    }
+    
+    #[test]
+    fn test_{{name}}_error_invalid_config() {
+        let error = {{name_pascal}}Error::invalid_config("bad value");
+        assert!(matches!(error, {{name_pascal}}Error::InvalidConfig { .. }));
+        assert_eq!(error.to_string(), "{{name_pascal}} configuration invalid: bad value");
+    }
+}

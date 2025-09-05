@@ -1,0 +1,174 @@
+//! Session extension for {{description}}.
+
+use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use crate::{AppResult, TramError};
+
+/// {{name_pascal}} session extension data.
+#[derive(Debug, Clone)]
+pub struct {{name_pascal}}Extension {
+    /// {{name_pascal}} state
+    pub state: Arc<RwLock<{{name_pascal}}State>>,
+    
+    /// {{name_pascal}} configuration
+    pub config: {{name_pascal}}Config,
+}
+
+/// Internal state for {{description}}.
+#[derive(Debug, Default)]
+pub struct {{name_pascal}}State {
+    /// Whether {{name}} is initialized
+    pub initialized: bool,
+    
+    /// {{name_pascal}} operation count
+    pub operation_count: u64,
+    
+    /// Last {{name}} operation timestamp
+    pub last_operation: Option<std::time::SystemTime>,
+}
+
+/// Configuration for {{name}} session extension.
+#[derive(Debug, Clone)]
+pub struct {{name_pascal}}Config {
+    /// Enable {{name}} extension
+    pub enabled: bool,
+    
+    /// {{name_pascal}} operation timeout in seconds
+    pub timeout: u64,
+    
+    /// Maximum number of concurrent {{name}} operations
+    pub max_concurrent: u32,
+}
+
+impl Default for {{name_pascal}}Config {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            timeout: 30,
+            max_concurrent: 10,
+        }
+    }
+}
+
+impl {{name_pascal}}Extension {
+    /// Create a new {{name}} extension.
+    pub fn new(config: {{name_pascal}}Config) -> Self {
+        Self {
+            state: Arc::new(RwLock::new({{name_pascal}}State::default())),
+            config,
+        }
+    }
+    
+    /// Initialize the {{name}} extension.
+    pub async fn initialize(&self) -> AppResult<()> {
+        let mut state = self.state.write().await;
+        
+        if state.initialized {
+            return Ok(());
+        }
+        
+        // TODO: Add {{name}} initialization logic here
+        
+        state.initialized = true;
+        state.last_operation = Some(std::time::SystemTime::now());
+        
+        Ok(())
+    }
+    
+    /// Execute a {{name}} operation.
+    pub async fn execute_operation(&self, operation_name: &str) -> AppResult<()> {
+        if !self.config.enabled {
+            return Err(TramError::InvalidConfig {
+                message: "{{name_pascal}} extension is disabled".to_string(),
+            }.into());
+        }
+        
+        let mut state = self.state.write().await;
+        
+        if !state.initialized {
+            return Err(TramError::InvalidConfig {
+                message: "{{name_pascal}} extension not initialized".to_string(),
+            }.into());
+        }
+        
+        // TODO: Add {{name}} operation logic here
+        println!("Executing {{name}} operation: {}", operation_name);
+        
+        state.operation_count += 1;
+        state.last_operation = Some(std::time::SystemTime::now());
+        
+        Ok(())
+    }
+    
+    /// Get {{name}} statistics.
+    pub async fn get_stats(&self) -> AppResult<{{name_pascal}}Stats> {
+        let state = self.state.read().await;
+        
+        Ok({{name_pascal}}Stats {
+            initialized: state.initialized,
+            operation_count: state.operation_count,
+            last_operation: state.last_operation,
+        })
+    }
+}
+
+/// {{name_pascal}} statistics.
+#[derive(Debug, Clone)]
+pub struct {{name_pascal}}Stats {
+    /// Whether {{name}} is initialized
+    pub initialized: bool,
+    
+    /// Number of {{name}} operations performed
+    pub operation_count: u64,
+    
+    /// Timestamp of last {{name}} operation
+    pub last_operation: Option<std::time::SystemTime>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[tokio::test]
+    async fn test_{{name}}_extension_creation() {
+        let config = {{name_pascal}}Config::default();
+        let extension = {{name_pascal}}Extension::new(config);
+        
+        let stats = extension.get_stats().await.unwrap();
+        assert!(!stats.initialized);
+        assert_eq!(stats.operation_count, 0);
+    }
+    
+    #[tokio::test]
+    async fn test_{{name}}_extension_initialization() {
+        let config = {{name_pascal}}Config::default();
+        let extension = {{name_pascal}}Extension::new(config);
+        
+        extension.initialize().await.unwrap();
+        
+        let stats = extension.get_stats().await.unwrap();
+        assert!(stats.initialized);
+    }
+    
+    #[tokio::test]
+    async fn test_{{name}}_extension_operation() {
+        let config = {{name_pascal}}Config::default();
+        let extension = {{name_pascal}}Extension::new(config);
+        
+        extension.initialize().await.unwrap();
+        extension.execute_operation("test").await.unwrap();
+        
+        let stats = extension.get_stats().await.unwrap();
+        assert_eq!(stats.operation_count, 1);
+    }
+    
+    #[tokio::test]
+    async fn test_{{name}}_extension_operation_without_init() {
+        let config = {{name_pascal}}Config::default();
+        let extension = {{name_pascal}}Extension::new(config);
+        
+        let result = extension.execute_operation("test").await;
+        assert!(result.is_err());
+    }
+}

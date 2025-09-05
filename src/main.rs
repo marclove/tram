@@ -296,7 +296,7 @@ async fn execute_command(command: Commands, session: &TramSession) -> tram_core:
                 parameters,
             };
 
-            let generator = TemplateGenerator::new();
+            let generator = TemplateGenerator::new()?;
             let template = generator.generate_template(&template_config)?;
 
             if write {

@@ -1,0 +1,70 @@
+//! {{description}} command implementation.
+
+use clap::Parser;
+use tracing::{info, debug};
+use crate::{AppResult, TramError};
+
+/// {{description}} command arguments.
+#[derive(Parser, Debug)]
+pub struct {{name_pascal}}Args {
+    /// Enable verbose output
+    #[arg(short, long)]
+    pub verbose: bool,
+    
+    /// Dry run mode - show what would be done without executing
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+/// Execute the {{name}} command.
+pub async fn execute(args: {{name_pascal}}Args) -> AppResult<()> {
+    info!("Executing {{name}} command");
+    
+    if args.verbose {
+        debug!("Verbose mode enabled");
+        debug!("Arguments: {:?}", args);
+    }
+    
+    if args.dry_run {
+        println!("DRY RUN: Would execute {{name}} command");
+        return Ok(());
+    }
+    
+    // TODO: Implement {{name}} command logic here
+    println!("Running {{name}} command...");
+    
+    // Example error handling
+    // return Err(TramError::InvalidConfig {
+    //     message: "Example error message".to_string(),
+    // }.into());
+    
+    println!("{{name_pascal}} command completed successfully!");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[tokio::test]
+    async fn test_{{name}}_command_success() {
+        let args = {{name_pascal}}Args {
+            verbose: false,
+            dry_run: false,
+        };
+        
+        let result = execute(args).await;
+        assert!(result.is_ok(), "Command should execute successfully");
+    }
+    
+    #[tokio::test]
+    async fn test_{{name}}_command_dry_run() {
+        let args = {{name_pascal}}Args {
+            verbose: true,
+            dry_run: true,
+        };
+        
+        let result = execute(args).await;
+        assert!(result.is_ok(), "Dry run should complete successfully");
+    }
+}

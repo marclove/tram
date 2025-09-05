@@ -28,6 +28,10 @@ tracing-subscriber.workspace = true
 
 # Configuration support
 serde.workspace = true
+serde_json.workspace = true
+
+# Templating
+handlebars.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
