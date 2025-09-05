@@ -4,7 +4,9 @@
 //! unnecessary abstractions.
 
 use async_trait::async_trait;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::{generate, shells::Shell};
+use std::io;
 use miette::Result;
 use starbase::{App, AppSession};
 use std::collections::HashMap;
@@ -114,6 +116,12 @@ pub enum Commands {
         /// Example to run
         #[arg(value_enum)]
         example: ExampleType,
+    },
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
     },
 }
 
@@ -534,6 +542,11 @@ async fn execute_command(command: Commands, session: &TramSession) -> tram_core:
             info!("Running example: {:?}", example);
             run_example(example, session).await?;
         }
+
+        Commands::Completions { shell } => {
+            info!("Generating completions for {:?}", shell);
+            generate_completions(shell)?;
+        }
     }
 
     Ok(())
@@ -642,6 +655,41 @@ async fn run_example(example: ExampleType, session: &TramSession) -> tram_core::
         "💡 All examples are also available as standalone programs in the examples/ directory."
     );
 
+    Ok(())
+}
+
+/// Generate shell completions to stdout
+fn generate_completions(shell: Shell) -> tram_core::AppResult<()> {
+    let mut cmd = Cli::command();
+    let name = cmd.get_name().to_string();
+    generate(shell, &mut cmd, name, &mut io::stdout());
+    println!();
+    
+    // Print installation instructions
+    match shell {
+        Shell::Bash => {
+            println!("# To install bash completions, add this to your ~/.bashrc:");
+            println!("# eval \"$(tram completions bash)\"");
+            println!("# Or save to a file:");
+            println!("# tram completions bash > ~/.bash_completion.d/tram");
+        }
+        Shell::Zsh => {
+            println!("# To install zsh completions, add this to your ~/.zshrc:");
+            println!("# eval \"$(tram completions zsh)\"");
+            println!("# Or save to a file in your fpath:");
+            println!("# tram completions zsh > ~/.zsh/completions/_tram");
+        }
+        Shell::Fish => {
+            println!("# To install fish completions:");
+            println!("# tram completions fish > ~/.config/fish/completions/tram.fish");
+        }
+        Shell::PowerShell => {
+            println!("# To install PowerShell completions, add this to your $PROFILE:");
+            println!("# Invoke-Expression (& tram completions powershell)");
+        }
+        _ => {}
+    }
+    
     Ok(())
 }
 

@@ -19,6 +19,7 @@ async-trait = "0.1"
 
 # CLI parsing
 clap = { version = "4.0", features = ["derive", "env"] }
+clap_complete = "4.0"
 
 # Error handling
 thiserror = "1.0"
@@ -110,6 +111,7 @@ tram-config = { path = "crates/tram-config" }
 tram-workspace = { path = "crates/tram-workspace" }
 
 clap.workspace = true
+clap_complete.workspace = true
 tokio.workspace = true
 miette.workspace = true
 async-trait.workspace = true
