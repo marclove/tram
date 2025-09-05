@@ -14,7 +14,7 @@ Development roadmap for improving Tram as a CLI starter kit foundation.
 ## Phase 2: Developer Experience
 1. [x] Interactive project initialization (`tram new <name>`)
 2. [x] Template generation for common CLI patterns
-3. [ ] Hot reload development mode
+3. [x] Hot reload development mode
 4. [ ] Built-in testing utilities and fixtures
 5. [ ] Comprehensive example commands
 6. [ ] Shell completion generation

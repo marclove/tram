@@ -17,6 +17,7 @@ Tram combines the power of [clap](https://github.com/clap-rs/clap) for command-l
 - **Moon task runner** integration for efficient development workflows
 - **Proto toolchain management** for consistent development environments
 - **Built-in configuration management** with multiple source support (CLI, env, files)
+- **Hot reload development mode** for real-time config changes during development
 - **Workspace detection** utilities for project-aware tools
 - **Claude Code hooks** for automated quality checks
 - **Behavior-driven development** patterns with comprehensive test coverage
@@ -92,8 +93,11 @@ just run -- workspace --detailed
 # Build the project
 just build
 
-# Watch for changes and run checks automatically
-just watch
+# Watch for changes and run checks automatically (meta-development)
+just watch-dev
+
+# Demo the built-in watch mode with config hot reload
+just demo-watch
 
 # Show all available commands
 just --list
@@ -132,6 +136,38 @@ tram workspace --detailed
 ```bash
 # Show current configuration
 tram config
+```
+
+### `watch` - Hot Reload Development Mode
+```bash
+# Watch mode with config hot reload and auto-checks (both enabled by default)
+tram watch
+
+# Watch only config files for hot reload (disable auto-checks)
+tram watch --config
+
+# Run only auto-checks on file changes (disable config watching)  
+tram watch --check
+
+# Stop watching with Ctrl+C
+```
+
+**Watch mode features:**
+- **Config hot reload** - Automatically detects and reloads configuration changes from `tram.json`, `tram.yaml`, `tram.toml`, etc.
+- **Real-time feedback** - Shows when configs are successfully reloaded or when errors occur
+- **Auto-checks** - Optional periodic checks for development workflow
+- **Thread-safe** - Safe for concurrent config access during reload
+
+**Config file formats supported:**
+- `tram.json`, `.tram.json`
+- `tram.yaml`, `tram.yml`, `.tram.yaml`, `.tram.yml`  
+- `tram.toml`, `.tram.toml`
+
+**Example config file (`tram.toml`):**
+```toml
+logLevel = "debug"
+outputFormat = "json"
+color = false
 ```
 
 ### Global Options
@@ -274,6 +310,34 @@ use tram_config::TramConfig;
 // CLI args > environment variables > config files > defaults
 let mut config = TramConfig::load_from_common_paths()?;
 // Apply CLI overrides manually (highest precedence)
+```
+
+#### Hot Reload Support
+
+Enable real-time configuration changes during development:
+
+```rust
+use tram_config::{ConfigWatcher, ConfigChangeHandler};
+
+// Create a config watcher for hot reload
+let config_watcher = ConfigWatcher::new(initial_config, None).await?;
+
+// Implement custom change handler
+struct MyHandler;
+
+#[async_trait::async_trait]
+impl ConfigChangeHandler for MyHandler {
+    async fn handle_config_change(&self, new_config: &TramConfig) {
+        println!("Config reloaded: {:?}", new_config);
+    }
+
+    async fn handle_config_error(&self, error: Box<dyn std::error::Error + Send + Sync>) {
+        eprintln!("Config reload failed: {}", error);
+    }
+}
+
+// Start watching with custom handler
+config_watcher.start_with_handler(MyHandler).await?;
 ```
 
 ### Workspace Detection

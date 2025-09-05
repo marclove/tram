@@ -28,7 +28,8 @@ just run [ARGS]         # Run the CLI application
 just setup              # Install toolchain and dependencies
 just new-crate NAME     # Create new crate with moon configuration
 just clean              # Clean cargo + moon caches
-just watch              # Watch for changes and run checks
+just watch-dev          # Watch for changes and run checks (meta-development)
+just demo-watch         # Demo built-in watch mode with config hot reload (for users of the CLI itself)
 
 # Advanced commands
 just perf               # Performance check with release build
@@ -162,6 +163,15 @@ impl TramSession {
 - Prioritize code quality, documentation, and developer experience over feature completeness
 - Use moon task orchestration - Never use direct cargo commands in development workflows
 - Implement quality checks - Claude Code hooks prevent warnings from being committed
+
+### Hot Reload Development Patterns
+- **Config hot reload** is implemented in `tram-config` crate using `notify` for file watching
+- **Built-in watch command** (`tram watch`) provides real-time config reloading during development
+- **Thread-safe config updates** using `Arc<RwLock<TramConfig>>` for concurrent access
+- **Custom change handlers** via `ConfigChangeHandler` trait for responding to config changes
+- **Development vs Runtime** - `just watch-dev` for meta-development, `tram watch` for end-user usage
+- **Config file formats** - Support JSON, YAML, TOML with camelCase field names (per schematic requirements)
+- **Error handling** - Invalid config changes show warnings but preserve previous valid configuration
 
 ## Starbase Reference
 

@@ -2,10 +2,16 @@
 //!
 //! Provides robust configuration loading from multiple sources with proper
 //! validation, type safety, and precedence using the schematic framework.
+//! Includes hot reload functionality for development workflows.
 
+use async_trait::async_trait;
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use schematic::{Config, ConfigLoader};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::sync::{RwLock, mpsc};
+use tracing::{debug, error, info, warn};
 
 /// Log level configuration.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -176,14 +182,277 @@ impl TramConfig {
     }
 }
 
+/// Trait for handling configuration changes during hot reload.
+#[async_trait]
+pub trait ConfigChangeHandler: Send + Sync {
+    /// Called when a configuration change is detected and successfully loaded.
+    async fn handle_config_change(&self, new_config: &TramConfig);
+
+    /// Called when a configuration change is detected but fails to load.
+    async fn handle_config_error(&self, error: Box<dyn std::error::Error + Send + Sync>);
+}
+
+/// Configuration watcher that provides hot reload functionality.
+pub struct ConfigWatcher {
+    config: Arc<RwLock<TramConfig>>,
+    config_paths: Vec<PathBuf>,
+    _watcher: RecommendedWatcher,
+    shutdown_tx: Option<mpsc::Sender<()>>,
+}
+
+impl ConfigWatcher {
+    /// Create a new config watcher for the specified paths.
+    /// If no paths are provided, watches common config file locations.
+    pub async fn new(
+        initial_config: TramConfig,
+        config_paths: Option<Vec<PathBuf>>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let paths = config_paths.unwrap_or_else(|| {
+            vec![
+                "tram.json".into(),
+                "tram.yaml".into(),
+                "tram.yml".into(),
+                "tram.toml".into(),
+                ".tram.json".into(),
+                ".tram.yaml".into(),
+                ".tram.yml".into(),
+                ".tram.toml".into(),
+            ]
+        });
+
+        let config = Arc::new(RwLock::new(initial_config));
+        let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+        let (event_tx, mut event_rx) = mpsc::channel::<Result<Event, notify::Error>>(1000);
+
+        // Create the file watcher
+        let mut watcher = notify::recommended_watcher(move |res| {
+            let _ = event_tx.blocking_send(res);
+        })?;
+
+        // Watch existing config files
+        let existing_paths: Vec<_> = paths.iter().filter(|p| p.exists()).collect();
+
+        for path in &existing_paths {
+            debug!("Watching config file: {}", path.display());
+            watcher.watch(path, RecursiveMode::NonRecursive)?;
+        }
+
+        if existing_paths.is_empty() {
+            warn!("No existing config files found to watch");
+        } else {
+            info!(
+                "Watching {} config file(s) for changes",
+                existing_paths.len()
+            );
+        }
+
+        // Clone config for the watch task
+        let config_clone = Arc::clone(&config);
+        let paths_clone = paths.clone();
+
+        // Spawn the watch task
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    Some(event_result) = event_rx.recv() => {
+                        match event_result {
+                            Ok(event) => {
+                                if let Err(e) = Self::handle_file_event(&config_clone, &paths_clone, event).await {
+                                    error!("Error handling config file event: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                error!("File watcher error: {}", e);
+                            }
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        debug!("Config watcher shutting down");
+                        break;
+                    }
+                }
+            }
+        });
+
+        Ok(Self {
+            config,
+            config_paths: paths,
+            _watcher: watcher,
+            shutdown_tx: Some(shutdown_tx),
+        })
+    }
+
+    /// Get the current configuration (thread-safe).
+    pub async fn get_config(&self) -> TramConfig {
+        self.config.read().await.clone()
+    }
+
+    /// Start watching with a custom change handler.
+    pub async fn start_with_handler<H>(
+        &self,
+        handler: H,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+    where
+        H: ConfigChangeHandler + 'static,
+    {
+        let handler = Arc::new(handler);
+        let config_clone = Arc::clone(&self.config);
+        let paths_clone = self.config_paths.clone();
+        let (event_tx, mut event_rx) = mpsc::channel::<Result<Event, notify::Error>>(1000);
+
+        // Create a new watcher for this handler
+        let mut watcher = notify::recommended_watcher(move |res| {
+            let _ = event_tx.blocking_send(res);
+        })?;
+
+        // Watch existing config files
+        for path in &paths_clone {
+            if path.exists() {
+                watcher.watch(path, RecursiveMode::NonRecursive)?;
+            }
+        }
+
+        // Process events with the handler
+        tokio::spawn(async move {
+            while let Some(event_result) = event_rx.recv().await {
+                match event_result {
+                    Ok(event) => {
+                        if let Err(e) = Self::handle_file_event_with_handler(
+                            &config_clone,
+                            &paths_clone,
+                            event,
+                            &handler,
+                        )
+                        .await
+                        {
+                            error!("Error handling config file event with handler: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("File watcher error: {}", e);
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Handle a file system event for config files.
+    async fn handle_file_event(
+        config: &Arc<RwLock<TramConfig>>,
+        config_paths: &[PathBuf],
+        event: Event,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+            return Ok(());
+        }
+
+        for path in &event.paths {
+            if config_paths.iter().any(|p| p == path) {
+                debug!("Config file changed: {}", path.display());
+
+                match Self::reload_config_from_path(path).await {
+                    Ok(new_config) => {
+                        {
+                            let mut config_guard = config.write().await;
+                            *config_guard = new_config;
+                        }
+                        info!("Configuration reloaded from {}", path.display());
+                    }
+                    Err(e) => {
+                        warn!("Failed to reload config from {}: {}", path.display(), e);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle a file system event with a custom handler.
+    async fn handle_file_event_with_handler<H>(
+        config: &Arc<RwLock<TramConfig>>,
+        config_paths: &[PathBuf],
+        event: Event,
+        handler: &Arc<H>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+    where
+        H: ConfigChangeHandler,
+    {
+        if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+            return Ok(());
+        }
+
+        for path in &event.paths {
+            if config_paths.iter().any(|p| p == path) {
+                debug!("Config file changed: {}", path.display());
+
+                match Self::reload_config_from_path(path).await {
+                    Ok(new_config) => {
+                        {
+                            let mut config_guard = config.write().await;
+                            *config_guard = new_config.clone();
+                        }
+                        info!("Configuration reloaded from {}", path.display());
+                        handler.handle_config_change(&new_config).await;
+                    }
+                    Err(e) => {
+                        warn!("Failed to reload config from {}: {}", path.display(), e);
+                        handler.handle_config_error(e).await;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Reload configuration from a specific path.
+    async fn reload_config_from_path(
+        path: &Path,
+    ) -> Result<TramConfig, Box<dyn std::error::Error + Send + Sync>> {
+        let path = path.to_owned();
+        tokio::task::spawn_blocking(move || {
+            TramConfig::load_from_file(path).map_err(
+                |e| -> Box<dyn std::error::Error + Send + Sync> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("Failed to load config: {}", e),
+                    ))
+                },
+            )
+        })
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?
+    }
+
+    /// Stop watching for configuration changes.
+    pub async fn stop(&mut self) {
+        if let Some(shutdown_tx) = self.shutdown_tx.take() {
+            let _ = shutdown_tx.send(()).await;
+        }
+    }
+}
+
+impl Drop for ConfigWatcher {
+    fn drop(&mut self) {
+        if let Some(shutdown_tx) = self.shutdown_tx.take() {
+            let _ = shutdown_tx.try_send(());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::env;
     use std::fs;
     use tempfile::TempDir;
 
     #[test]
+    #[serial]
     fn test_config_load_defaults() {
         // Clean up any existing environment variables to test defaults
         unsafe {
@@ -201,6 +470,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_config_load_from_json_file() {
         // Clean up environment variables so file values aren't overridden
         unsafe {
@@ -213,8 +483,8 @@ mod tests {
         let config_file = temp_dir.path().join("test-config.json");
 
         let config_content = r#"{
-            "log_level": "debug",
-            "output_format": "json",
+            "logLevel": "debug",
+            "outputFormat": "json",
             "color": false
         }"#;
         fs::write(&config_file, config_content).unwrap();
@@ -238,8 +508,8 @@ mod tests {
         let config_file = temp_dir.path().join("test-config.yaml");
 
         let config_content = r#"
-log_level: warn
-output_format: yaml
+logLevel: warn
+outputFormat: yaml
 color: false
 "#;
         fs::write(&config_file, config_content).unwrap();
@@ -263,8 +533,8 @@ color: false
         let config_file = temp_dir.path().join("test-config.toml");
 
         let config_content = r#"
-log_level = "error"
-output_format = "table"
+logLevel = "error"
+outputFormat = "table"
 color = true
 "#;
         fs::write(&config_file, config_content).unwrap();
@@ -292,6 +562,7 @@ color = true
     }
 
     #[test]
+    #[serial]
     fn test_environment_variables() {
         // Set environment variables for testing
         unsafe {
@@ -341,6 +612,7 @@ color = true
     }
 
     #[test]
+    #[serial]
     fn test_load_from_common_paths_with_config() {
         // Clean up environment variables so file values aren't overridden
         unsafe {
@@ -353,8 +625,8 @@ color = true
         let config_file = temp_dir.path().join("tram.json");
 
         let config_content = r#"{
-            "log_level": "debug",
-            "output_format": "json",
+            "logLevel": "debug",
+            "outputFormat": "json",
             "color": false
         }"#;
         fs::write(&config_file, config_content).unwrap();
@@ -373,6 +645,7 @@ color = true
     }
 
     #[test]
+    #[serial]
     fn test_file_and_env_var_merging() {
         // Clean up environment variables first
         unsafe {
@@ -386,8 +659,8 @@ color = true
 
         // File sets some values
         let config_content = r#"{
-            "log_level": "debug",
-            "output_format": "json"
+            "logLevel": "debug",
+            "outputFormat": "json"
         }"#;
         fs::write(&config_file, config_content).unwrap();
 

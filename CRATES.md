@@ -18,7 +18,8 @@ Logical sub-packages for the Tram CLI starter kit, organized by developer experi
 - Config merging and precedence rules
 - Schema validation with helpful error messages
 - Environment-specific configuration
-- Hot-reloading configuration changes
+- Hot-reload configuration changes - Real-time config file monitoring and reloading
+- Thread-safe configuration updates with custom change handlers
 - Common config patterns (logging levels, output formats)
 
 ### `tram-workspace`
@@ -42,12 +43,12 @@ Logical sub-packages for the Tram CLI starter kit, organized by developer experi
 
 ### `tram-dev`
 **Development workflow enhancements**
-- File watching and hot reload
+- File watching and hot reload - Built-in watch mode with config hot reload
 - Development server mode
 - Auto-restart on changes
 - Development-specific logging
 - Debug mode utilities
-- Live configuration updates
+- Live configuration updates - Integrated with tram-config hot reload
 
 ### `tram-test`
 **CLI testing utilities and fixtures**
@@ -72,7 +73,7 @@ Logical sub-packages for the Tram CLI starter kit, organized by developer experi
 ### `tram-interactive`
 **Interactive CLI elements**
 - Enhanced prompts and confirmations
-- Progress indicators and spinners  
+- Progress indicators and spinners
 - Multi-step wizards
 - Form-like input collection
 - Interactive selection menus

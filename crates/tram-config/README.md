@@ -2,7 +2,7 @@
 
 Configuration management using schematic.
 
-Provides robust configuration loading from multiple sources with proper validation, type safety, and precedence using the schematic framework.
+Provides robust configuration loading from multiple sources with proper validation, type safety, and precedence using the schematic framework. Includes hot reload functionality for development workflows.
 
 ## Overview
 
@@ -75,6 +75,43 @@ export TRAM_WORKSPACE_ROOT=/path/to/workspace
 ### Built-in Validation
 
 Configuration is validated automatically by schematic with helpful error messages for invalid values.
+
+### Hot Reload Support
+
+Real-time configuration reloading during development:
+
+```rust
+use tram_config::{ConfigWatcher, ConfigChangeHandler};
+use async_trait::async_trait;
+
+// Create a config watcher
+let config_watcher = ConfigWatcher::new(initial_config, None).await?;
+
+// Implement a custom change handler
+struct MyConfigHandler;
+
+#[async_trait]
+impl ConfigChangeHandler for MyConfigHandler {
+    async fn handle_config_change(&self, new_config: &TramConfig) {
+        println!("Configuration reloaded successfully!");
+        println!("New log level: {}", new_config.log_level);
+    }
+
+    async fn handle_config_error(&self, error: Box<dyn std::error::Error + Send + Sync>) {
+        eprintln!("Failed to reload config: {}", error);
+    }
+}
+
+// Start watching with the handler
+config_watcher.start_with_handler(MyConfigHandler).await?;
+```
+
+**Hot reload features:**
+- **Automatic detection** of changes to any supported config file format
+- **Thread-safe config updates** using `Arc<RwLock<TramConfig>>`
+- **Custom change handlers** for responding to config updates
+- **Error handling** for invalid config changes (keeps previous valid config)
+- **Graceful shutdown** with proper resource cleanup
 
 ## Configuration Structure
 
@@ -208,6 +245,56 @@ Searches for these files in order:
 - `.tram.yaml`, `.tram.yml`
 - `.tram.toml`
 
+## Hot Reload API
+
+### `ConfigWatcher`
+
+Creates a file system watcher for automatic configuration reloading:
+
+```rust
+use tram_config::{ConfigWatcher, TramConfig};
+
+// Watch default config file locations
+let watcher = ConfigWatcher::new(initial_config, None).await?;
+
+// Watch specific config files
+let custom_paths = vec![PathBuf::from("./custom-config.json")];
+let watcher = ConfigWatcher::new(initial_config, Some(custom_paths)).await?;
+
+// Get current config (thread-safe)
+let current_config = watcher.get_config().await;
+
+// Stop watching
+watcher.stop().await;
+```
+
+### `ConfigChangeHandler` Trait
+
+Implement this trait to handle configuration changes:
+
+```rust
+use async_trait::async_trait;
+use tram_config::{ConfigChangeHandler, TramConfig};
+
+struct LoggingHandler;
+
+#[async_trait]
+impl ConfigChangeHandler for LoggingHandler {
+    async fn handle_config_change(&self, new_config: &TramConfig) {
+        // Called when config is successfully reloaded
+        println!("✓ Config updated: log_level={}", new_config.log_level);
+    }
+
+    async fn handle_config_error(&self, error: Box<dyn std::error::Error + Send + Sync>) {
+        // Called when config reload fails
+        eprintln!("✗ Config reload failed: {}", error);
+    }
+}
+
+// Use with watcher
+watcher.start_with_handler(LoggingHandler).await?;
+```
+
 ## Enum Types
 
 ### LogLevel
@@ -252,6 +339,10 @@ Schematic provides detailed error messages for:
 - `schematic` - Configuration management framework
 - `serde` - Configuration serialization/deserialization
 - `serde_json` - JSON configuration support (via schematic)
+- `notify` - File system watching for hot reload
+- `tokio` - Async runtime for hot reload functionality
+- `async-trait` - Async trait support
+- `tracing` - Structured logging
 - `tram-core` - Error handling and common types
 
 ## Testing

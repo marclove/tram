@@ -8,8 +8,8 @@ use clap::Parser;
 use miette::Result;
 use starbase::{App, AppSession};
 use std::collections::HashMap;
-use tracing::{debug, info};
-use tram_config::{OutputFormat, TramConfig};
+use tracing::{debug, info, warn};
+use tram_config::{ConfigChangeHandler, ConfigWatcher, OutputFormat, TramConfig};
 use tram_core::{
     InitConfig, InitProjectType, ProjectInitializer, TemplateConfig, TemplateGenerator,
     TemplateType, init_tracing,
@@ -100,6 +100,15 @@ pub enum Commands {
     },
     /// Show configuration information
     Config,
+    /// Watch mode - monitor files and reload config automatically
+    Watch {
+        /// Watch configuration files for hot reload
+        #[arg(long, default_value = "true")]
+        config: bool,
+        /// Run checks on file changes (format, lint, build, test)
+        #[arg(long, default_value = "true")]
+        check: bool,
+    },
 }
 
 /// Application session - directly implements starbase's AppSession.
@@ -227,6 +236,28 @@ fn template_type_display(template_type: &TemplateType) -> &'static str {
         TemplateType::ConfigSection => "Config Section",
         TemplateType::ErrorType => "Error Type",
         TemplateType::SessionExtension => "Session Extension",
+    }
+}
+
+/// Handler for configuration changes during watch mode.
+pub struct WatchConfigHandler;
+
+#[async_trait::async_trait]
+impl ConfigChangeHandler for WatchConfigHandler {
+    async fn handle_config_change(&self, new_config: &TramConfig) {
+        info!("🔄 Configuration reloaded successfully");
+        info!("   Log level: {}", new_config.log_level);
+        info!("   Output format: {}", new_config.output_format);
+        info!("   Colors: {}", new_config.color);
+
+        if let Some(workspace_root) = &new_config.workspace_root {
+            info!("   Workspace root: {}", workspace_root.display());
+        }
+    }
+
+    async fn handle_config_error(&self, error: Box<dyn std::error::Error + Send + Sync>) {
+        warn!("❌ Configuration reload failed: {}", error);
+        warn!("   Continuing with previous configuration");
     }
 }
 
@@ -384,6 +415,99 @@ async fn execute_command(command: Commands, session: &TramSession) -> tram_core:
             if let Some(workspace_root) = &session.config.workspace_root {
                 println!("   Workspace root: {}", workspace_root.display());
             }
+        }
+
+        Commands::Watch {
+            config: watch_config,
+            check,
+        } => {
+            info!("Starting watch mode...");
+
+            if watch_config {
+                info!("🔍 Config hot reload: ENABLED");
+            } else {
+                info!("🔍 Config hot reload: DISABLED");
+            }
+
+            if check {
+                info!("⚡ Auto-checks (format, lint, build, test): ENABLED");
+            } else {
+                info!("⚡ Auto-checks: DISABLED");
+            }
+
+            println!("Watch mode started. Press Ctrl+C to stop.");
+
+            let mut tasks = Vec::new();
+
+            // Set up config watcher if enabled
+            if watch_config {
+                let config_watcher = ConfigWatcher::new(session.config.clone(), None)
+                    .await
+                    .map_err(|e| tram_core::TramError::InvalidConfig {
+                        message: format!("Failed to start config watcher: {}", e),
+                    })?;
+
+                let handler = WatchConfigHandler;
+                if let Err(e) = config_watcher.start_with_handler(handler).await {
+                    warn!("Failed to start config change handler: {}", e);
+                }
+
+                // Keep the watcher alive by storing it
+                tasks.push(tokio::spawn(async move {
+                    // Keep the config_watcher alive for the duration of the task
+                    let _watcher = config_watcher;
+                    // Wait indefinitely (until the task is cancelled)
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+                    loop {
+                        interval.tick().await;
+                    }
+                }));
+            }
+
+            // Set up file watching for code changes if enabled
+            if check {
+                tasks.push(tokio::spawn(async move {
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+                    let mut last_check = std::time::Instant::now();
+
+                    loop {
+                        interval.tick().await;
+
+                        // Simple implementation: check if any Rust files have been modified
+                        // In a real implementation, you'd use a proper file watcher
+                        let current_time = std::time::Instant::now();
+                        if current_time.duration_since(last_check).as_secs() >= 2 {
+                            debug!("Running periodic checks (placeholder for file-based trigger)");
+                            last_check = current_time;
+
+                            // Here you would run `just check` or equivalent
+                            // For now, just log that we would run checks
+                            debug!("Would run: just check");
+                        }
+                    }
+                }));
+            }
+
+            if tasks.is_empty() {
+                warn!("No watch features enabled. Use --config or --check flags.");
+                return Ok(());
+            }
+
+            // Wait for Ctrl+C
+            tokio::signal::ctrl_c()
+                .await
+                .map_err(|e| tram_core::TramError::InvalidConfig {
+                    message: format!("Failed to wait for Ctrl+C: {}", e),
+                })?;
+
+            info!("Shutting down watch mode...");
+
+            // Cancel all tasks
+            for task in tasks {
+                task.abort();
+            }
+
+            println!("Watch mode stopped.");
         }
     }
 

@@ -10,11 +10,18 @@ check:
     moon run :format
     moon check --all
 
-# Watch and continuously check on file changes (cargo-watch needed for this)
-watch:
-    @echo "Watching for changes... (Ctrl+C to stop)"
+# Watch for changes during Tram development (meta-development)
+# Runs format, lint, build, test when files change
+watch-dev:
+    @echo "Starting development watch mode for Tram codebase..."
     @echo "Note: Install cargo-watch if not available: cargo install cargo-watch"
     cargo watch -s "just check"
+
+# Demo the built-in watch mode (for end users of Tram-based CLIs)
+demo-watch:
+    @echo "Demonstrating Tram's built-in watch mode with config hot reload..."
+    @echo "Press Ctrl+C to stop watching"
+    cargo run -- watch
 
 # Run the CLI with arguments (only direct cargo usage for convenience)
 run *ARGS:

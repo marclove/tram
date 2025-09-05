@@ -27,7 +27,16 @@ clap.workspace = true
 
 # File system
 starbase_utils.workspace = true
+notify.workspace = true
+
+# Async runtime (for config watching)
+tokio.workspace = true
+async-trait.workspace = true
+
+# Logging and tracing
+tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+serial_test = "3.0"
 
