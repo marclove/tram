@@ -5,7 +5,7 @@
 
 use crate::{AppResult, TramError};
 use handlebars::Handlebars;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -45,10 +45,10 @@ pub struct TemplateGenerator {
 impl TemplateGenerator {
     pub fn new() -> AppResult<Self> {
         let mut handlebars = Handlebars::new();
-        
+
         // Register built-in templates
         Self::register_templates(&mut handlebars)?;
-        
+
         Ok(Self { handlebars })
     }
 
@@ -128,7 +128,10 @@ impl TemplateGenerator {
 
         // Register config section template
         handlebars
-            .register_template_string("config_section", include_str!("templates/config_section.hbs"))
+            .register_template_string(
+                "config_section",
+                include_str!("templates/config_section.hbs"),
+            )
             .map_err(|e| TramError::InvalidConfig {
                 message: format!("Failed to register config section template: {}", e),
             })?;
@@ -142,7 +145,10 @@ impl TemplateGenerator {
 
         // Register session extension template
         handlebars
-            .register_template_string("session_extension", include_str!("templates/session_extension.hbs"))
+            .register_template_string(
+                "session_extension",
+                include_str!("templates/session_extension.hbs"),
+            )
             .map_err(|e| TramError::InvalidConfig {
                 message: format!("Failed to register session extension template: {}", e),
             })?;
@@ -157,9 +163,12 @@ impl TemplateGenerator {
 
         self.handlebars
             .render(template_name, &context)
-            .map_err(|e| TramError::InvalidConfig {
-                message: format!("Failed to render {} template: {}", template_name, e),
-            }.into())
+            .map_err(|e| {
+                TramError::InvalidConfig {
+                    message: format!("Failed to render {} template: {}", template_name, e),
+                }
+                .into()
+            })
     }
 
     /// Get the template name for a given template type.

@@ -196,7 +196,7 @@ use tram_core::AppResult;
 
 #[derive(Clone, Debug)]
 pub struct MySession {
-    pub config: tram_config::Config,
+    pub config: tram_config::TramConfig,
     pub workspace: tram_workspace::WorkspaceDetector,
     pub workspace_root: Option<PathBuf>,
 }
@@ -205,7 +205,7 @@ pub struct MySession {
 impl AppSession for MySession {
     async fn startup(&mut self) -> AppResult<Option<u8>> {
         // Load configuration from multiple sources
-        self.config = Config::load_from_args(&cli_args)?;
+        self.config = TramConfig::load_from_common_paths()?;
 
         // Detect workspace root
         if let Ok(root) = self.workspace.detect_root() {
@@ -269,11 +269,11 @@ tasks:
 Load configuration from multiple sources with proper precedence:
 
 ```rust
-use tram_config::Config;
+use tram_config::TramConfig;
 
 // CLI args > environment variables > config files > defaults
-let config = Config::load_from_args(&cli_args)?;
-config.validate()?;
+let mut config = TramConfig::load_from_common_paths()?;
+// Apply CLI overrides manually (highest precedence)
 ```
 
 ### Workspace Detection
@@ -335,17 +335,16 @@ initializer.create_project(&config)?;
 
 #### Multi-Source Configuration
 ```rust
-use tram_config::{Config, GlobalOptions};
+use tram_config::TramConfig;
 
 // Load from CLI args > env vars > config files > defaults
-let config = Config::load_from_args(&global_options)?;
-config.validate()?;
+let config = TramConfig::load_from_common_paths()?;
 
 // Use throughout your application
-match config.output_format.as_str() {
-    "json" => println!("{}", serde_json::to_string(&data)?),
-    "yaml" => println!("{}", serde_yaml::to_string(&data)?),
-    _ => println!("{:#?}", data),
+match config.output_format {
+    OutputFormat::Json => println!("{}", serde_json::to_string(&data)?),
+    OutputFormat::Yaml => println!("{}", serde_yaml::to_string(&data)?),
+    OutputFormat::Table => println!("{:#?}", data),
 }
 ```
 

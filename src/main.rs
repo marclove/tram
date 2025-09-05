@@ -9,7 +9,7 @@ use miette::Result;
 use starbase::{App, AppSession};
 use std::collections::HashMap;
 use tracing::{debug, info};
-use tram_config::Config;
+use tram_config::{OutputFormat, TramConfig};
 use tram_core::{
     InitConfig, InitProjectType, ProjectInitializer, TemplateConfig, TemplateGenerator,
     TemplateType, init_tracing,
@@ -105,7 +105,7 @@ pub enum Commands {
 /// Application session - directly implements starbase's AppSession.
 #[derive(Clone, Debug)]
 pub struct TramSession {
-    pub config: Config,
+    pub config: TramConfig,
     pub workspace: WorkspaceDetector,
     pub workspace_root: Option<std::path::PathBuf>,
     pub project_type: Option<ProjectType>,
@@ -113,15 +113,19 @@ pub struct TramSession {
 
 impl TramSession {
     pub fn new() -> tram_core::AppResult<Self> {
+        let config = TramConfig::load().map_err(|e| tram_core::TramError::InvalidConfig {
+            message: format!("Failed to load configuration: {}", e),
+        })?;
+
         Ok(Self {
-            config: Config::default(),
+            config,
             workspace: WorkspaceDetector::new()?,
             workspace_root: None,
             project_type: None,
         })
     }
 
-    pub fn with_config(config: Config) -> tram_core::AppResult<Self> {
+    pub fn with_config(config: TramConfig) -> tram_core::AppResult<Self> {
         Ok(Self {
             config,
             workspace: WorkspaceDetector::new()?,
@@ -135,14 +139,13 @@ impl TramSession {
 impl AppSession for TramSession {
     async fn startup(&mut self) -> tram_core::AppResult<Option<u8>> {
         // Initialize tracing before anything else
-        let use_json = self.config.output_format == "json";
-        init_tracing(&self.config.log_level, use_json)?;
+        let use_json = matches!(self.config.output_format, OutputFormat::Json);
+        init_tracing(&self.config.log_level.to_string(), use_json)?;
 
         info!("Starting Tram CLI application");
         debug!("Configuration: {:?}", self.config);
 
-        // Validate configuration
-        self.config.validate()?;
+        // Configuration validation is handled by schematic automatically
 
         // Detect workspace
         if let Ok(root) = self.workspace.detect_root() {
@@ -371,12 +374,15 @@ async fn execute_command(command: Commands, session: &TramSession) -> tram_core:
 
         Commands::Config => {
             println!("Current configuration:");
-            println!("   Log level: {}", session.config.log_level);
-            println!("   Output format: {}", session.config.output_format);
+            println!("   Log level: {}", session.config.log_level.to_string());
+            println!(
+                "   Output format: {}",
+                session.config.output_format.to_string()
+            );
             println!("   Colors: {}", session.config.color);
 
-            if let Some(config_file) = &session.config.config_file {
-                println!("   Config file: {}", config_file.display());
+            if let Some(workspace_root) = &session.config.workspace_root {
+                println!("   Workspace root: {}", workspace_root.display());
             }
         }
     }
@@ -389,14 +395,54 @@ async fn main() -> Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse();
 
-    // Create initial configuration from CLI args
-    let global_options = tram_config::GlobalOptions {
-        log_level: cli.global.log_level.clone(),
-        format: cli.global.format.clone(),
-        no_color: cli.global.no_color,
-        config: cli.global.config.clone(),
-    };
-    let config = Config::load_from_args(&global_options)?;
+    // Debug CLI arguments
+    debug!("CLI log_level: {}", cli.global.log_level);
+    debug!("CLI format: {}", cli.global.format);
+    debug!("CLI no_color: {}", cli.global.no_color);
+
+    // Load base configuration using the methods we wrote in tram-config
+    let mut config = if let Some(config_path) = &cli.global.config {
+        TramConfig::load_from_file(config_path)
+    } else {
+        TramConfig::load_from_common_paths()
+    }
+    .map_err(|e| miette::miette!("Configuration error: {}", e))?;
+
+    // Config loaded successfully
+
+    // Apply CLI overrides directly to the config struct (highest precedence)
+    if cli.global.log_level != "info" {
+        match cli.global.log_level.to_lowercase().as_str() {
+            "debug" => config.log_level = tram_config::LogLevel::Debug,
+            "info" => config.log_level = tram_config::LogLevel::Info,
+            "warn" => config.log_level = tram_config::LogLevel::Warn,
+            "error" => config.log_level = tram_config::LogLevel::Error,
+            _ => {
+                return Err(miette::miette!(
+                    "Invalid log level: {}",
+                    cli.global.log_level
+                ));
+            }
+        }
+    }
+
+    if cli.global.format != "table" {
+        match cli.global.format.to_lowercase().as_str() {
+            "json" => config.output_format = OutputFormat::Json,
+            "yaml" => config.output_format = OutputFormat::Yaml,
+            "table" => config.output_format = OutputFormat::Table,
+            _ => {
+                return Err(miette::miette!(
+                    "Invalid output format: {}",
+                    cli.global.format
+                ));
+            }
+        }
+    }
+
+    if cli.global.no_color {
+        config.color = false;
+    }
 
     // Create application session with config
     let mut session = TramSession::with_config(config)?;

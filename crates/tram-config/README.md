@@ -1,33 +1,34 @@
 # tram-config
 
-Configuration management utilities for CLI applications with multi-source loading and validation.
+Configuration management using schematic.
+
+Provides robust configuration loading from multiple sources with proper validation, type safety, and precedence using the schematic framework.
 
 ## Overview
 
-`tram-config` provides a robust configuration system that loads settings from multiple sources with proper precedence. It demonstrates best practices for CLI configuration management, supporting file formats commonly used in modern development workflows.
+`tram-config` provides a robust configuration system built on the schematic framework. It loads settings from multiple sources with proper precedence and demonstrates best practices for CLI configuration management.
 
 ## Key Features
 
 ### Multi-Source Configuration Loading
 
 Loads configuration with this precedence order:
-1. **CLI arguments** (highest priority)
+1. **CLI arguments** (highest priority) 
 2. **Environment variables**
 3. **Configuration files** (JSON, YAML, TOML)
 4. **Default values** (lowest priority)
 
 ```rust
-use tram_config::{Config, GlobalOptions};
+use tram_config::TramConfig;
 
-// Create from CLI arguments
-let global_options = GlobalOptions {
-    log_level: "debug".to_string(),
-    format: "json".to_string(),
-    no_color: false,
-    config: Some(PathBuf::from("./custom-config.toml")),
-};
+// Load from environment and defaults
+let config = TramConfig::load()?;
 
-let config = Config::load_from_args(&global_options)?;
+// Load from specific file
+let config = TramConfig::load_from_file("./config.json")?;
+
+// Load from common config file locations
+let config = TramConfig::load_from_common_paths()?;
 ```
 
 ### Multiple File Format Support
@@ -38,30 +39,26 @@ Automatically detects and loads configuration files:
 - **YAML** - `.tram.yaml`, `.tram.yml`, `tram.yaml`, `tram.yml`
 - **TOML** - `.tram.toml`, `tram.toml`
 
-Example configuration files:
-
-```toml
-# tram.toml
-log_level = "info"
-output_format = "table"
-color = true
-
-[workspace]
-root = "/path/to/workspace"
-```
+**Important**: Configuration files must use camelCase field names:
 
 ```json
 {
-  "log_level": "debug",
-  "output_format": "json",
+  "logLevel": "debug",
+  "outputFormat": "json",
   "color": false
 }
 ```
 
 ```yaml
-log_level: warn
-output_format: table
+logLevel: warn
+outputFormat: table
 color: true
+```
+
+```toml
+logLevel = "info"
+outputFormat = "table"
+color = true
 ```
 
 ### Environment Variable Support
@@ -77,209 +74,194 @@ export TRAM_WORKSPACE_ROOT=/path/to/workspace
 
 ### Built-in Validation
 
-Configuration is validated on load with helpful error messages:
-
-```rust
-config.validate()?;  // Validates log levels, output formats, etc.
-```
+Configuration is validated automatically by schematic with helpful error messages for invalid values.
 
 ## Configuration Structure
 
-The main `Config` struct provides common CLI configuration patterns:
+The main `TramConfig` struct provides common CLI configuration patterns:
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
+use schematic::Config;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputFormat {
+    Json,
+    Yaml,
+    Table,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Config)]
+pub struct TramConfig {
     /// Log level (debug, info, warn, error)
-    pub log_level: String,
-    
-    /// Output format (json, yaml, table)
-    pub output_format: String,
-    
+    #[setting(default = "info", env = "TRAM_LOG_LEVEL")]
+    pub log_level: LogLevel,
+
+    /// Output format (json, yaml, table)  
+    #[setting(default = "table", env = "TRAM_OUTPUT_FORMAT")]
+    pub output_format: OutputFormat,
+
     /// Whether to use colors in output
+    #[setting(default = true, env = "TRAM_COLOR")]
     pub color: bool,
-    
-    /// Config file path
-    pub config_file: Option<PathBuf>,
-    
+
     /// Workspace root directory
+    #[setting(env = "TRAM_WORKSPACE_ROOT")]
     pub workspace_root: Option<PathBuf>,
 }
 ```
 
 ## Integration with Your CLI
 
-### 1. Define Global Options
-
-Create a structure to bridge clap arguments to configuration loading:
+### 1. Load Configuration in Application Startup
 
 ```rust
-use clap::Parser;
-
-#[derive(Parser, Debug)]
-pub struct GlobalOptions {
-    #[arg(long, default_value = "info")]
-    pub log_level: String,
-    
-    #[arg(long, default_value = "table")]
-    pub format: String,
-    
-    #[arg(long)]
-    pub no_color: bool,
-    
-    #[arg(long)]
-    pub config: Option<PathBuf>,
-}
-```
-
-### 2. Load Configuration in Application Startup
-
-```rust
-use tram_config::{Config, GlobalOptions};
+use tram_config::TramConfig;
 
 #[async_trait]
-impl AppSession for MySession {
+impl AppSession for TramSession {
     async fn startup(&mut self) -> AppResult<Option<u8>> {
-        // Convert clap args to config loading format
-        let global_options = GlobalOptions {
-            log_level: cli.global.log_level.clone(),
-            format: cli.global.format.clone(),
-            no_color: cli.global.no_color,
-            config: cli.global.config.clone(),
-        };
+        // Load base configuration (env + defaults)
+        let mut config = TramConfig::load_from_common_paths()?;
         
-        // Load with precedence: CLI > env > file > defaults
-        self.config = Config::load_from_args(&global_options)?;
-        self.config.validate()?;
+        // Apply CLI overrides (highest precedence)
+        if cli.global.log_level != "info" {
+            config.log_level = cli.global.log_level.parse()?;
+        }
+        if cli.global.format != "table" {
+            config.output_format = cli.global.format.parse()?;
+        }
+        if cli.global.no_color {
+            config.color = false;
+        }
         
+        self.config = config;
         Ok(None)
     }
 }
 ```
 
-### 3. Use Configuration Throughout Your Application
+### 2. Use Configuration Throughout Your Application
 
 ```rust
 // Access configuration in command handlers
-fn execute_command(cmd: Commands, session: &MySession) -> AppResult<()> {
+fn execute_command(cmd: Commands, session: &TramSession) -> AppResult<()> {
     // Use log level for conditional output
-    if session.config.log_level == "debug" {
+    if matches!(session.config.log_level, LogLevel::Debug) {
         println!("Debug info...");
     }
     
     // Use output format for structured data
-    match session.config.output_format.as_str() {
-        "json" => println!("{}", serde_json::to_string(&data)?),
-        "yaml" => println!("{}", serde_yaml::to_string(&data)?),
-        _ => println!("{:#?}", data),
+    match session.config.output_format {
+        OutputFormat::Json => println!("{}", serde_json::to_string(&data)?),
+        OutputFormat::Yaml => println!("{}", serde_yaml::to_string(&data)?),
+        OutputFormat::Table => println!("{:#?}", data),
     }
     
     Ok(())
 }
 ```
 
-## Extending Configuration
+## Configuration Loading Methods
 
-### Adding New Configuration Fields
+### `TramConfig::load()`
 
-1. Add fields to the `Config` struct:
-
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
-    // ... existing fields ...
-    
-    /// Your new configuration option
-    pub my_option: String,
-}
-```
-
-2. Update the default implementation:
+Loads configuration from environment variables and defaults only:
 
 ```rust
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            // ... existing defaults ...
-            my_option: "default_value".to_string(),
-        }
-    }
-}
+let config = TramConfig::load()?;
 ```
 
-3. Add environment variable support:
+### `TramConfig::load_from_file(path)`
+
+Loads configuration from a specific file:
 
 ```rust
-// In load_from_env method
-if let Ok(my_option) = env::var("TRAM_MY_OPTION") {
-    config.my_option = my_option;
-}
+let config = TramConfig::load_from_file("./my-config.json")?;
 ```
 
-4. Add CLI argument integration and validation as needed.
+Supported file extensions: `.json`, `.yaml`, `.yml`, `.toml`
 
-### Custom Configuration Loading
+### `TramConfig::load_from_common_paths()`
 
-For specialized needs, you can implement custom loading logic:
+Searches for config files in standard locations:
 
 ```rust
-impl Config {
-    pub fn load_with_custom_sources() -> AppResult<Self> {
-        let mut config = Self::default();
-        
-        // Load from custom sources
-        if let Some(custom_config) = load_from_custom_source()? {
-            config = Self::merge(config, custom_config);
-        }
-        
-        // Apply environment and CLI overrides
-        config = Self::load_from_env(config);
-        
-        config.validate()?;
-        Ok(config)
-    }
-}
+let config = TramConfig::load_from_common_paths()?;
 ```
+
+Searches for these files in order:
+- `tram.json`
+- `tram.yaml`, `tram.yml`
+- `tram.toml`
+- `.tram.json`
+- `.tram.yaml`, `.tram.yml`
+- `.tram.toml`
+
+## Enum Types
+
+### LogLevel
+
+Valid values: `debug`, `info`, `warn`, `error`
+
+Implements `FromStr`, `Display`, and `From<&str>` for easy conversion.
+
+### OutputFormat
+
+Valid values: `json`, `yaml`, `table`
+
+Implements `FromStr`, `Display`, and `From<&str>` for easy conversion.
 
 ## Design Patterns Demonstrated
 
+### Schematic Integration
+
+Uses schematic's `Config` derive macro with `#[setting]` attributes to define:
+- Default values
+- Environment variable mapping
+- Field validation
+
+### Type Safety
+
+Strongly-typed enums prevent invalid configuration values and provide compile-time guarantees.
+
 ### Configuration Precedence
 
-The loading system demonstrates the standard precedence pattern used by most CLI tools:
-- CLI arguments override everything (user's immediate intent)
-- Environment variables override files (deployment/runtime configuration)
-- Configuration files override defaults (project-specific settings)
-- Defaults provide sensible fallbacks
+Environment variables automatically override defaults through schematic's built-in precedence handling. CLI arguments are applied manually as the highest precedence layer.
 
-### Validation Separation
+### Error Handling
 
-Configuration loading and validation are separate steps, allowing for:
-- Early error detection with clear messages
-- Flexible loading strategies
-- Easy testing of validation logic
-
-### Multiple Format Support
-
-Supporting multiple configuration formats (JSON, YAML, TOML) allows users to:
-- Use their preferred format
-- Integrate with existing toolchains
-- Choose the right format for their use case
+Schematic provides detailed error messages for:
+- Invalid file formats
+- Unknown configuration fields
+- Type conversion failures
+- Missing required values
 
 ## Dependencies
 
+- `schematic` - Configuration management framework
 - `serde` - Configuration serialization/deserialization
-- `serde_json` - JSON configuration support
-- `serde_yaml` - YAML configuration support  
-- `toml` - TOML configuration support
+- `serde_json` - JSON configuration support (via schematic)
 - `tram-core` - Error handling and common types
 
 ## Testing
 
 Configuration loading includes comprehensive tests covering:
-- File format detection and loading
+- File format detection and loading (JSON, YAML, TOML)
 - Environment variable parsing
+- Default value handling
 - Configuration merging and precedence
 - Validation error cases
-- Default value handling
+- Enum parsing and display
 
 This ensures your CLI's configuration system works reliably across different deployment scenarios.
